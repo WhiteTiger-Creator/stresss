@@ -115,9 +115,20 @@
       "build_flagged"
     ],
     "patched_workflow": "/app/workflow/export_report.py",
+    "forbidden_tokens": ["event[\"timestamp\"]", "level == \"error\""],
+    "removed_tokens_schema": {
+      "description": "Map forbidden token string -> boolean indicating token removal from executable patched code.",
+      "required_keys": ["event[\"timestamp\"]", "level == \"error\""],
+      "value_type": "boolean"
+    },
     "pre_repair": {
       "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
-      "capture_order": "before any write to export_report.py"
+      "capture_order": "before any write to export_report.py",
+      "pipeline_tokens_present_schema": {
+        "description": "Map forbidden token string -> boolean indicating token presence in frozen broken snapshot.",
+        "required_keys": ["event[\"timestamp\"]", "level == \"error\""],
+        "value_type": "boolean"
+      }
     },
     "post_repair": {
       "required_fields": ["flagged_count", "rerun_flagged_count"]
