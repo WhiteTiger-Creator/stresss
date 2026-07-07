@@ -1,0 +1,101 @@
+{
+  "schema_version": "service-log-report-v2",
+  "raw_event_count": 17,
+  "unique_event_ids": 15,
+  "total_events": 15,
+  "level_counts": {
+    "debug": 1,
+    "error": 5,
+    "info": 5,
+    "warn": 4
+  },
+  "services": ["api", "db", "worker"],
+  "flagged_count": 8,
+  "suppressed_excluded_count": 1,
+  "event_count": 17,
+  "unique_ids": 15,
+  "required_issue_ids": [
+    "wrong_timestamp_field",
+    "severity_filter",
+    "sort_order",
+    "level_normalization",
+    "dedupe_policy",
+    "suppressed_filter"
+  ],
+  "issue_evidence_terms": {
+    "wrong_timestamp_field": {
+      "dossier_terms": ["timestamp", "ts_ms"],
+      "pipeline_terms": ["event[\"timestamp\"]"],
+      "repair_terms": ["ts_ms"]
+    },
+    "severity_filter": {
+      "dossier_terms": ["warn", "error"],
+      "pipeline_terms": ["level == \"error\""],
+      "repair_terms": ["warn"]
+    },
+    "sort_order": {
+      "dossier_terms": ["ascending", "descending"],
+      "pipeline_terms": ["sort", "ts_ms"],
+      "repair_terms": ["reverse=True"]
+    },
+    "level_normalization": {
+      "dossier_terms": ["WARN", "lowercase"],
+      "pipeline_terms": ["WARN"],
+      "repair_terms": [".lower("]
+    },
+    "dedupe_policy": {
+      "dossier_terms": ["duplicate", "ts_ms"],
+      "pipeline_terms": ["for event in events"],
+      "repair_terms": ["dedupe"]
+    },
+    "suppressed_filter": {
+      "dossier_terms": ["suppressed", "excluded"],
+      "pipeline_terms": ["suppressed"],
+      "repair_terms": ["suppressed"]
+    }
+  },
+  "expected_flagged_ids_desc": ["e14", "e13", "e10", "e09", "e07", "e03", "e05", "e02"],
+  "expected_flagged_ts_ms_desc": [
+    1700000008600,
+    1700000008500,
+    1700000007000,
+    1700000006000,
+    1700000004000,
+    1700000003000,
+    1700000002500,
+    1700000002100
+  ],
+  "expected_service_matrix": {
+    "api": {"debug": 1, "error": 1, "info": 2, "warn": 2},
+    "db": {"debug": 0, "error": 1, "info": 1, "warn": 1},
+    "worker": {"debug": 0, "error": 3, "info": 2, "warn": 1}
+  },
+  "forbidden_executable_tokens": [
+    "event[\"timestamp\"]",
+    "level == \"error\""
+  ],
+  "required_executable_tokens": [
+    ".lower(",
+    "reverse=True"
+  ],
+  "broken_pipeline_sha256": "c2115f759d4205f5dd8cf15c3f65ba46f3a983173a0fedfb5ddb7aa6631667e9",
+  "broken_flagged_count": 5,
+  "broken_flagged_ids_asc": ["e03", "e03", "e07", "e10", "e15"],
+  "alternate_input": "/tests/fixtures/alt_events.json",
+  "alternate_expected": {
+    "raw_event_count": 5,
+    "unique_event_ids": 4,
+    "total_events": 4,
+    "flagged_count": 2,
+    "suppressed_excluded_count": 1,
+    "level_counts": {
+      "debug": 0,
+      "error": 1,
+      "info": 1,
+      "warn": 2
+    },
+    "services": ["billing"],
+    "flagged_ids_desc": ["a4", "a2"],
+    "flagged_ts_ms_desc": [150, 120]
+  }
+}
