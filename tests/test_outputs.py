@@ -418,9 +418,43 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
     assert report.exists(), f"diagnose failed (rc={result.returncode}): {result.stderr}"
     data = json.loads(report.read_text())
     assert data["pipeline_status"] == "diagnosed"
+    assert "input_stats" in data
+    assert data["input_stats"]["event_count"] == expected["event_count"]
+    assert data["input_stats"]["unique_event_ids"] == expected["unique_ids"]
+    assert data["input_stats"]["services"] == expected["services"]
     for key in ("verified_summary", "output_paths"):
         assert key not in data
     assert {item["id"] for item in data["issues_found"]} == set(expected["required_issue_ids"])
     for issue in data["issues_found"]:
+        for key in ("id", "severity", "description", "resolution", "evidence"):
+            assert key in issue
+        for key in ("dossier_quote", "pipeline_evidence", "repair_action"):
+            assert key in issue["evidence"]
+            assert len(issue["evidence"][key]) >= 10
         quote = _normalize_ws(issue["evidence"]["dossier_quote"])
         assert quote in dossier_text
+
+
+def test_repair_supports_custom_output_dir(tmp_path_factory, expected: dict):
+    custom_dir = tmp_path_factory.mktemp("custom_output")
+    current = PIPELINE.read_text()
+    try:
+        shutil.copy(ORIGINAL_PIPELINE, PIPELINE)
+        result = subprocess.run(
+            ["python3", str(CLI), "repair", "--output-dir", str(custom_dir)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        summary = json.loads((custom_dir / "summary.json").read_text())
+        flagged = _flagged_rows(custom_dir / "flagged.jsonl")
+        diagnosis = json.loads((custom_dir / "diagnosis.json").read_text())
+        assert summary == _compute_summary(_load_events(INPUT_PATH))
+        assert flagged == _compute_flagged(_load_events(INPUT_PATH))
+        assert diagnosis["output_paths"]["summary_json"] == str(custom_dir / "summary.json")
+        assert diagnosis["output_paths"]["flagged_jsonl"] == str(custom_dir / "flagged.jsonl")
+        assert diagnosis["output_paths"]["service_matrix_json"] == str(custom_dir / "service_matrix.json")
+        assert summary["flagged_count"] == expected["flagged_count"]
+    finally:
+        PIPELINE.write_text(current)

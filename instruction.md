@@ -1,9 +1,11 @@
 The service-log export in `/app/workflow/export_report.py` is broken again — missing warn rows, duplicate ids, uppercase severities treated as non-matching, suppressed noise in flagged output, zero timestamps, and the wrong sort order. Input events are in `/app/data/events.json`; months of analyst notes live in `/app/incident/export_dossier.md` (mostly noise — verify against code and data). Acceptance rules are in `/app/docs/report_spec.json`.
 
+Environment contract: keep the frozen broken snapshot at `/app/workflow/.export_report.original` intact and use it as the authoritative pre-repair baseline for diagnosis/audit behavior. Long-context dossier contract: `/app/incident/export_dossier.md` is expected to remain a large incident archive (at least 500 lines) with the final directive section preserved.
+
 Build `/app/log_audit.py` as a CLI with `diagnose` and `repair` subcommands:
 
 - `diagnose` — run as `python3 /app/log_audit.py diagnose --dossier PATH --report PATH`. Read the dossier, inspect the pipeline and data, and write JSON with `pipeline_status` `"diagnosed"`. **Always include every allowed root-cause issue id** in `issues_found`, even when run after repair. Allowed ids: `wrong_timestamp_field`, `severity_filter`, `sort_order`, `level_normalization`, `dedupe_policy`, `suppressed_filter`. Base evidence on the dossier and the **original** broken workflow — not only a live grep of an already-patched file. Include `input_stats` (`event_count`, `unique_event_ids`, sorted `services`). Do **not** include repaired-only keys (`verified_summary`, `output_paths`).
-- `repair` — run as `python3 /app/log_audit.py repair --output-dir PATH`. Capture `pre_repair` **before** patching. Patch `/app/workflow/export_report.py` in place, run the corrected pipeline, and write under `/app/output/`:
+- `repair` — run as `python3 /app/log_audit.py repair --output-dir PATH`. Capture `pre_repair` **before** patching. Patch `/app/workflow/export_report.py` in place, run the corrected pipeline, and write all outputs under the provided `--output-dir` (default `/app/output`):
   - `summary.json`, `service_matrix.json`, and `flagged.jsonl` from the corrected pipeline
   - `diagnosis.json` with `pipeline_status` `"repaired"`, all issue ids retained, plus `verified_summary` and `output_paths`
   - `repair_audit.json` with `pre_repair.pipeline_source_sha256`, `removed_tokens`, `processing_steps`, and `post_repair` counts
