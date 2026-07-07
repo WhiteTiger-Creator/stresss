@@ -28,6 +28,8 @@ Every `issues_found` item must include `id`, `severity`, `description`, `resolut
 - `dedupe_policy`: dossier `duplicate` + `ts_ms`; pipeline `for event in events`; repair `dedupe`
 - `suppressed_filter`: dossier `suppressed` + `excluded`; pipeline `suppressed`; repair `suppressed`
 
+`pipeline_evidence` must be a **literal substring excerpt** from the frozen original workflow source at `/app/workflow/.export_report.original` (not paraphrased text and not extracted from an already patched file).
+
 After repair, `output_paths` must point to the actual files under the effective output directory (`--output-dir`, default `/app/output`): `<output-dir>/summary.json`, `<output-dir>/flagged.jsonl`, and `<output-dir>/service_matrix.json`. `summary.json` must include `schema_version`, `raw_event_count`, `unique_event_ids`, `total_events`, alphabetical `level_counts`, `services`, `flagged_count`, and `suppressed_excluded_count`. `service_matrix.json` must map each service to alphabetical per-level counts. `flagged.jsonl` must use compact JSON (no spaces after `:`). `repair_audit.json` must include `post_repair.rerun_flagged_count`.
 
 `repair_audit.json` mapping schema is strict: `removed_tokens` must be an object mapping each forbidden token string to a boolean (`true` when removed from executable patched code), and `pre_repair.pipeline_tokens_present` must be an object mapping each forbidden token string to a boolean (`true` when present in the frozen broken snapshot before repair).

@@ -44,6 +44,8 @@
       ],
       "evidence": {
         "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
+        "pipeline_evidence_source": "/app/workflow/.export_report.original",
+        "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "required_terms_by_issue": {
           "wrong_timestamp_field": {
             "dossier_quote": ["timestamp", "ts_ms"],
