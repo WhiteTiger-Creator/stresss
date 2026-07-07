@@ -28,7 +28,7 @@ Every `issues_found` item must include `id`, `severity`, `description`, `resolut
 - `dedupe_policy`: dossier `duplicate` + `ts_ms`; pipeline `for event in events`; repair `dedupe`
 - `suppressed_filter`: dossier `suppressed` + `excluded`; pipeline `suppressed`; repair `suppressed`
 
-After repair, `output_paths` must point to `/app/output/summary.json`, `/app/output/flagged.jsonl`, and `/app/output/service_matrix.json`. `summary.json` must include `schema_version`, `raw_event_count`, `unique_event_ids`, `total_events`, alphabetical `level_counts`, `services`, `flagged_count`, and `suppressed_excluded_count`. `service_matrix.json` must map each service to alphabetical per-level counts. `flagged.jsonl` must use compact JSON (no spaces after `:`).
+After repair, `output_paths` must point to the actual files under the effective output directory (`--output-dir`, default `/app/output`): `<output-dir>/summary.json`, `<output-dir>/flagged.jsonl`, and `<output-dir>/service_matrix.json`. `summary.json` must include `schema_version`, `raw_event_count`, `unique_event_ids`, `total_events`, alphabetical `level_counts`, `services`, `flagged_count`, and `suppressed_excluded_count`. `service_matrix.json` must map each service to alphabetical per-level counts. `flagged.jsonl` must use compact JSON (no spaces after `:`). `repair_audit.json` must include `post_repair.rerun_flagged_count`.
 
 Remove forbidden bug tokens from executable pipeline code after repair (`event["timestamp"]`, `level == "error"`). Comments may mention removed bugs. Compute every summary, matrix, and flagged value from input JSON — do not hard-code verifier numbers.
 

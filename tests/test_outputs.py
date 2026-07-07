@@ -238,6 +238,7 @@ def test_issue_item_required_fields(diagnosis: dict):
 
 
 def test_issue_evidence(diagnosis: dict, expected: dict):
+    original_pipeline = ORIGINAL_PIPELINE.read_text()
     issues = {item["id"]: item for item in diagnosis["issues_found"]}
     for issue_id, terms in expected["issue_evidence_terms"].items():
         evidence = issues[issue_id]["evidence"]
@@ -249,6 +250,7 @@ def test_issue_evidence(diagnosis: dict, expected: dict):
             assert term in evidence["dossier_quote"]
         for term in terms["pipeline_terms"]:
             assert term in evidence["pipeline_evidence"]
+        assert evidence["pipeline_evidence"] in original_pipeline
         for term in terms["repair_terms"]:
             assert term in evidence["repair_action"]
 
