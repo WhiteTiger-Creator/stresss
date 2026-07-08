@@ -420,6 +420,7 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
     assert report.exists(), f"diagnose failed (rc={result.returncode}): {result.stderr}"
     data = json.loads(report.read_text())
     assert data["pipeline_status"] == "diagnosed"
+    original_pipeline = ORIGINAL_PIPELINE.read_text()
     assert "input_stats" in data
     assert data["input_stats"]["event_count"] == expected["event_count"]
     assert data["input_stats"]["unique_event_ids"] == expected["unique_ids"]
@@ -433,6 +434,7 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
         for key in ("dossier_quote", "pipeline_evidence", "repair_action"):
             assert key in issue["evidence"]
             assert len(issue["evidence"][key]) >= 10
+        assert issue["evidence"]["pipeline_evidence"] in original_pipeline
         quote = _normalize_ws(issue["evidence"]["dossier_quote"])
         assert quote in dossier_text
 

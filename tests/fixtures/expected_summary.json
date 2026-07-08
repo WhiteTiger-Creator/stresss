@@ -40,7 +40,7 @@
     },
     "level_normalization": {
       "dossier_terms": ["WARN", "lowercase"],
-      "pipeline_terms": ["WARN"],
+      "pipeline_terms": ["level"],
       "repair_terms": [".lower("]
     },
     "dedupe_policy": {

@@ -9,7 +9,7 @@ subcategories = ["long_context"]
 number_of_milestones = 0
 codebase_size = "minimal"
 languages = ["python"]
-tags = ["python", "cli", "debugging", "json", "log-processing", "audit-trail", "long-context", "deduplication"]
+tags = ["cli", "debugging", "log-processing", "audit-trail", "deduplication"]
 expert_time_estimate_min = 180
 junior_time_estimate_min = 360
 

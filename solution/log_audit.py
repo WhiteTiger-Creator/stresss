@@ -29,7 +29,7 @@ ISSUE_DEFINITIONS = [
                 "Broken export_report.py reads event['timestamp'] instead of event['ts_ms'], "
                 "zeroing flagged timestamps whenever the legacy timestamp field is absent from JSON payloads."
             ),
-            "pipeline_evidence": "Original export_report.py references event[\"timestamp\"] when building flagged rows.",
+            "pipeline_evidence": "\"ts_ms\": event[\"timestamp\"] if \"timestamp\" in event else 0,",
             "repair_action": "Use event ts_ms for flagged.jsonl timestamps.",
         },
     },
@@ -43,7 +43,7 @@ ISSUE_DEFINITIONS = [
                 "Flagged export keeps only level == 'error' rows but operations expects both warn and error "
                 "severities in flagged.jsonl for paging review."
             ),
-            "pipeline_evidence": "Original export_report.py filters with level == \"error\" only.",
+            "pipeline_evidence": "if level == \"error\":",
             "repair_action": "Include warn and error rows in flagged export.",
         },
     },
@@ -57,7 +57,7 @@ ISSUE_DEFINITIONS = [
                 "Flagged rows are sorted by ts_ms ascending; runbook requires ts_ms descending so newest "
                 "incidents appear first in flagged.jsonl."
             ),
-            "pipeline_evidence": "Original export_report.py sorts flagged rows by ts_ms ascending without reverse.",
+            "pipeline_evidence": "flagged.sort(key=lambda row: row[\"ts_ms\"])",
             "repair_action": "Sort flagged rows with reverse=True for ts_ms descending output.",
         },
     },
@@ -71,7 +71,7 @@ ISSUE_DEFINITIONS = [
                 "Source payloads include WARN and Error aliases; export_report.py must normalize level values "
                 "to lowercase before counting or flagging rows."
             ),
-            "pipeline_evidence": "Original export_report.py leaves WARN casing unchanged and never calls .lower() on level values.",
+            "pipeline_evidence": "level = str(event.get(\"level\", \"\"))",
             "repair_action": "Normalize level with .lower() before severity checks.",
         },
     },
@@ -84,7 +84,7 @@ ISSUE_DEFINITIONS = [
             "dossier_quote": (
                 "Duplicate event ids must collapse to the row with the highest ts_ms before export summaries run."
             ),
-            "pipeline_evidence": "Original export_report.py iterates the raw events list without dedupe by id.",
+            "pipeline_evidence": "for event in events:",
             "repair_action": "Dedupe event ids keeping the highest ts_ms before export.",
         },
     },
@@ -97,7 +97,7 @@ ISSUE_DEFINITIONS = [
             "dossier_quote": (
                 "Events with suppressed set true must be excluded from flagged.jsonl even when severity is error."
             ),
-            "pipeline_evidence": "Original export_report.py never checks the suppressed flag before writing flagged rows.",
+            "pipeline_evidence": "flagged.append(",
             "repair_action": "Exclude suppressed true rows from flagged export.",
         },
     },
