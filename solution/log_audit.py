@@ -26,8 +26,8 @@ ISSUE_DEFINITIONS = [
         "resolution": "Read ts_ms from each event when building flagged rows.",
         "evidence": {
             "dossier_quote": (
-                "Broken export_report.py reads event['timestamp'] instead of event['ts_ms'], "
-                "zeroing flagged timestamps whenever the legacy timestamp field is absent from JSON payloads."
+                "Devon: ts_ms values in flagged output are all 0. grep shows event['timestamp'] "
+                "in export_report.py — our payload uses ts_ms."
             ),
             "pipeline_evidence": "\"ts_ms\": event[\"timestamp\"] if \"timestamp\" in event else 0,",
             "repair_action": "Use event ts_ms for flagged.jsonl timestamps.",
@@ -40,8 +40,7 @@ ISSUE_DEFINITIONS = [
         "resolution": "Include both warn and error severities in flagged.jsonl.",
         "evidence": {
             "dossier_quote": (
-                "Flagged export keeps only level == 'error' rows but operations expects both warn and error "
-                "severities in flagged.jsonl for paging review."
+                "Devon: Partial patch kept level == 'error' filter — need warn and error in flagged export."
             ),
             "pipeline_evidence": "if level == \"error\":",
             "repair_action": "Include warn and error rows in flagged export.",
@@ -54,8 +53,8 @@ ISSUE_DEFINITIONS = [
         "resolution": "Sort flagged rows by ts_ms descending (reverse=True).",
         "evidence": {
             "dossier_quote": (
-                "Flagged rows are sorted by ts_ms ascending; runbook requires ts_ms descending so newest "
-                "incidents appear first in flagged.jsonl."
+                "Riley: Dashboard pager shows oldest error first. flagged.jsonl sorted ascending; "
+                "runbook says descending."
             ),
             "pipeline_evidence": "flagged.sort(key=lambda row: row[\"ts_ms\"])",
             "repair_action": "Sort flagged rows with reverse=True for ts_ms descending output.",
@@ -68,8 +67,8 @@ ISSUE_DEFINITIONS = [
         "resolution": "Normalize level strings with .lower() before counting and flagging.",
         "evidence": {
             "dossier_quote": (
-                "Source payloads include WARN and Error aliases; export_report.py must normalize level values "
-                "to lowercase before counting or flagging rows."
+                "Riley: Uppercase WARN rows from the legacy bridge feed are not counted — spec says "
+                "normalize to lowercase before severity tallies."
             ),
             "pipeline_evidence": "level = str(event.get(\"level\", \"\"))",
             "repair_action": "Normalize level with .lower() before severity checks.",
@@ -82,10 +81,11 @@ ISSUE_DEFINITIONS = [
         "resolution": "Dedupe by event id keeping the highest ts_ms row.",
         "evidence": {
             "dossier_quote": (
-                "Duplicate event ids must collapse to the row with the highest ts_ms before export summaries run."
+                "Sam: Replay batch had duplicate event ids with different ts_ms values; we should keep "
+                "the newest ts_ms per id before summaries."
             ),
             "pipeline_evidence": "for event in events:",
-            "repair_action": "Dedupe event ids keeping the highest ts_ms before export.",
+            "repair_action": "dedupe event ids keeping the highest ts_ms before export.",
         },
     },
     {
@@ -95,9 +95,10 @@ ISSUE_DEFINITIONS = [
         "resolution": "Skip rows where suppressed is true when building flagged.jsonl.",
         "evidence": {
             "dossier_quote": (
-                "Events with suppressed set true must be excluded from flagged.jsonl even when severity is error."
+                "Devon: Suppressed paging errors still land in flagged.jsonl — runbook says suppressed rows "
+                "must be excluded from flagged export."
             ),
-            "pipeline_evidence": "flagged.append(",
+            "pipeline_evidence": "\"suppressed_excluded_count\": 0,",
             "repair_action": "Exclude suppressed true rows from flagged export.",
         },
     },
