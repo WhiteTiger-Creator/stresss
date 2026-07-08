@@ -8,9 +8,6 @@ if [ "$PWD" = "/" ]; then
 fi
 
 set +e
-python3 -m pip install --no-cache-dir --no-index \
-  --find-links /tests/wheels \
-  -r /tests/requirements-test.txt
 
 python3 -m pytest -o cache_dir=/tmp/pytest_cache \
   --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA

@@ -131,7 +131,7 @@ def pre_repair_audit() -> dict:
 
 def patch_workflow() -> None:
     for candidate in (
-        Path(__file__).resolve().parent / "export_report.py",
+        Path(__file__).resolve().parent / "export_report_fixed.py",
         Path("/app/export_report_fixed.py"),
     ):
         if candidate.exists():
