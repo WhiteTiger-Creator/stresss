@@ -7,10 +7,6 @@ if [ "$PWD" = "/" ]; then
     exit 1
 fi
 
-if [ -f /app/log_audit.py ] && [ ! -f /app/output/diagnosis.json ]; then
-    python3 /app/log_audit.py repair --output-dir /app/output || true
-fi
-
 set +e
 python3 -m pip install --no-cache-dir --no-index \
   --find-links /tests/wheels \
@@ -25,5 +21,3 @@ if [ "$RC" -eq 0 ]; then
 else
     echo 0 > /logs/verifier/reward.txt
 fi
-
-exit "$RC"

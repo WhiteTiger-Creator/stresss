@@ -10,25 +10,9 @@ Build `/app/log_audit.py` as a CLI with `diagnose` and `repair` subcommands:
   - `diagnosis.json` with `pipeline_status` `"repaired"`, all issue ids retained, plus `verified_summary` and `output_paths`
   - `repair_audit.json` with `pre_repair.pipeline_source_sha256`, `removed_tokens`, `processing_steps`, and `post_repair` counts
 
-Fix all six root-cause bugs:
+The broken exporter mishandles timestamps, severity filtering, sort order, level casing, duplicate ids, and suppressed rows. Diagnose each issue from dossier behavior notes and the frozen original workflow source; repair the pipeline so outputs match `/app/docs/report_spec.json`.
 
-1. **wrong_timestamp_field** — use `ts_ms`, not `timestamp`
-2. **severity_filter** — include both `warn` and `error` in flagged output
-3. **sort_order** — sort flagged rows by `ts_ms` **descending** (`reverse=True`)
-4. **level_normalization** — normalize `level` with `.lower()` before counting or flagging (handles `WARN` / `Error` aliases)
-5. **dedupe_policy** — collapse duplicate `id` values keeping the row with the **highest** `ts_ms` before summaries run
-6. **suppressed_filter** — exclude rows where `suppressed` is `true` from `flagged.jsonl` (they may still count in summary level totals)
-
-Every `issues_found` item must include `id`, `severity`, `description`, `resolution`, and `evidence` with `dossier_quote`, `pipeline_evidence`, and `repair_action`. `dossier_quote` must be a **verbatim excerpt** from `/app/incident/export_dossier.md` (matching after whitespace normalization). Evidence must include these terms literally:
-
-- `wrong_timestamp_field`: dossier `timestamp` + `ts_ms`; pipeline `event["timestamp"]`; repair `ts_ms`
-- `severity_filter`: dossier `warn` + `error`; pipeline `level == "error"`; repair `warn`
-- `sort_order`: dossier `ascending` + `descending`; pipeline `sort` + `ts_ms`; repair `reverse=True`
-- `level_normalization`: dossier `WARN` + `lowercase`; pipeline `WARN`; repair `.lower(`
-- `dedupe_policy`: dossier `duplicate` + `ts_ms`; pipeline `for event in events`; repair `dedupe`
-- `suppressed_filter`: dossier `suppressed` + `excluded`; pipeline `suppressed`; repair `suppressed`
-
-`pipeline_evidence` must be a **literal substring excerpt** from the frozen original workflow source at `/app/workflow/.export_report.original` (not paraphrased text and not extracted from an already patched file).
+Every `issues_found` item must include `id`, `severity`, `description`, `resolution`, and `evidence` with `dossier_quote`, `pipeline_evidence`, and `repair_action`. `dossier_quote` must be a **verbatim excerpt** from `/app/incident/export_dossier.md` (matching after whitespace normalization). `pipeline_evidence` must be a **literal substring excerpt** from the frozen original workflow source at `/app/workflow/.export_report.original` (not paraphrased text and not extracted from an already patched file).
 
 After repair, `output_paths` must point to the actual files under the effective output directory (`--output-dir`, default `/app/output`): `<output-dir>/summary.json`, `<output-dir>/flagged.jsonl`, and `<output-dir>/service_matrix.json`. `summary.json` must include `schema_version`, `raw_event_count`, `unique_event_ids`, `total_events`, alphabetical `level_counts`, `services`, `flagged_count`, and `suppressed_excluded_count`. `service_matrix.json` must map each service to alphabetical per-level counts. `flagged.jsonl` must use compact JSON (no spaces after `:`). `repair_audit.json` must include `post_repair.rerun_flagged_count`.
 
