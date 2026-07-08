@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.0",
+  "version": "3.1",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -10,7 +10,6 @@
           "dossier": "/app/incident/export_dossier.md",
           "report": "/app/output/diagnosis.json"
         },
-        "must_include_all_allowed_ids": true,
         "must_not_include_repaired_keys": ["verified_summary", "output_paths"]
       },
       "repair": {
@@ -46,38 +45,7 @@
         "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
-        "required_terms_by_issue": {
-          "wrong_timestamp_field": {
-            "dossier_quote": ["timestamp", "ts_ms"],
-            "pipeline_evidence": ["event[\"timestamp\"]"],
-            "repair_action": ["ts_ms"]
-          },
-          "severity_filter": {
-            "dossier_quote": ["warn", "error"],
-            "pipeline_evidence": ["level == \"error\""],
-            "repair_action": ["warn"]
-          },
-          "sort_order": {
-            "dossier_quote": ["ascending", "descending"],
-            "pipeline_evidence": ["sort", "ts_ms"],
-            "repair_action": ["reverse=True"]
-          },
-          "level_normalization": {
-            "dossier_quote": ["WARN", "lowercase"],
-            "pipeline_evidence": ["WARN"],
-            "repair_action": [".lower("]
-          },
-          "dedupe_policy": {
-            "dossier_quote": ["duplicate", "ts_ms"],
-            "pipeline_evidence": ["for event in events"],
-            "repair_action": ["dedupe"]
-          },
-          "suppressed_filter": {
-            "dossier_quote": ["suppressed", "excluded"],
-            "pipeline_evidence": ["suppressed"],
-            "repair_action": ["suppressed"]
-          }
-        }
+        "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)"
       }
     },
     "input_stats": {
@@ -110,26 +78,15 @@
       "pre_repair",
       "post_repair"
     ],
-    "processing_steps": [
-      "normalize_level",
-      "dedupe_by_id",
-      "filter_suppressed",
-      "build_flagged"
-    ],
     "patched_workflow": "/app/workflow/export_report.py",
-    "forbidden_tokens": ["event[\"timestamp\"]", "level == \"error\""],
     "removed_tokens_schema": {
-      "description": "Map forbidden token string -> boolean indicating token removal from executable patched code.",
-      "required_keys": ["event[\"timestamp\"]", "level == \"error\""],
-      "value_type": "boolean"
+      "description": "Map each buggy executable token string found in the frozen snapshot to a boolean (true when absent from patched executable code)."
     },
     "pre_repair": {
       "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
       "capture_order": "before any write to export_report.py",
       "pipeline_tokens_present_schema": {
-        "description": "Map forbidden token string -> boolean indicating token presence in frozen broken snapshot.",
-        "required_keys": ["event[\"timestamp\"]", "level == \"error\""],
-        "value_type": "boolean"
+        "description": "Map each buggy executable token string to a boolean (true when present in frozen broken snapshot)."
       }
     },
     "post_repair": {
@@ -142,9 +99,7 @@
     "defaults": {
       "input": "/app/data/events.json",
       "output_dir": "/app/output"
-    },
-    "must_not_contain_after_repair": ["event[\"timestamp\"]", "level == \"error\""],
-    "must_contain_after_repair": ["ts_ms", "reverse=True", ".lower("]
+    }
   },
   "outputs": {
     "summary_json": {
@@ -152,15 +107,12 @@
       "level_counts_key_order": ["debug", "error", "info", "warn"]
     },
     "service_matrix_json": {
-      "description": "Per-service level counts from canonical deduped events.",
+      "description": "Per-service level counts from canonical processed events.",
       "service_sort": "ascending alphabetical",
       "level_key_order": ["debug", "error", "info", "warn"]
     },
     "flagged_jsonl": {
-      "required_fields": ["id", "ts_ms", "level", "service", "message"],
-      "sort": "ts_ms descending",
-      "levels_included": ["warn", "error"],
-      "exclude_suppressed": true
+      "required_fields": ["id", "ts_ms", "level", "service", "message"]
     }
   }
 }

@@ -1,25 +1,9 @@
-The service-log export in `/app/workflow/export_report.py` is broken again — missing warn rows, duplicate ids, uppercase severities treated as non-matching, suppressed noise in flagged output, zero timestamps, and the wrong sort order. Input events are in `/app/data/events.json`; months of analyst notes live in `/app/incident/export_dossier.md` (mostly noise — verify against code and data). Acceptance rules are in `/app/docs/report_spec.json`.
+export is broken again — `/app/workflow/export_report.py` is not producing flagged output that matches what ops expects from `/app/data/events.json`.
 
-Environment contract: keep the frozen broken snapshot at `/app/workflow/.export_report.original` intact and use it as the authoritative pre-repair baseline for diagnosis/audit behavior. Long-context dossier contract: `/app/incident/export_dossier.md` is expected to remain a large incident archive (at least 500 lines).
+months of incident notes are in `/app/incident/export_dossier.md`. most of it is noise and some early triage threads contradict later findings — treat the dossier as the source of truth for *behavior*, not every bridge-shift blurb. output shape and audit schemas are in `/app/docs/report_spec.json`.
 
-Build `/app/log_audit.py` as a CLI with `diagnose` and `repair` subcommands:
+build `/app/log_audit.py` with `diagnose` and `repair` subcommands per spec. `diagnose` writes a JSON report from `--dossier` / `--report` paths. `repair` patches `/app/workflow/export_report.py` in place and writes outputs under `--output-dir` (default `/app/output`).
 
-- `diagnose` — run as `python3 /app/log_audit.py diagnose --dossier PATH --report PATH`. Produce JSON with `pipeline_status` `"diagnosed"`. **Always include every allowed root-cause issue id** in `issues_found`, even when run after repair. Allowed ids: `wrong_timestamp_field`, `severity_filter`, `sort_order`, `level_normalization`, `dedupe_policy`, `suppressed_filter`. Base evidence on the dossier and the **original** broken workflow — not only a live grep of an already-patched file. Include `input_stats` (`event_count`, `unique_event_ids`, sorted `services`). Do **not** include repaired-only keys (`verified_summary`, `output_paths`).
-- `repair` — run as `python3 /app/log_audit.py repair --output-dir PATH`. Capture `pre_repair` **before** patching. Patch `/app/workflow/export_report.py` in place, run the corrected pipeline, and write all outputs under the provided `--output-dir` (default `/app/output`):
-  - `summary.json`, `service_matrix.json`, and `flagged.jsonl` from the corrected pipeline
-  - `diagnosis.json` with `pipeline_status` `"repaired"`, all issue ids retained, plus `verified_summary` and `output_paths`
-  - `repair_audit.json` with `pre_repair.pipeline_source_sha256`, `removed_tokens`, `processing_steps`, and `post_repair` counts
+keep `/app/workflow/.export_report.original` read-only and untouched. diagnosis evidence must cite that frozen snapshot (literal substrings) and verbatim dossier excerpts — not paraphrases and not text from already-patched code.
 
-The broken exporter mishandles timestamps, severity filtering, sort order, level casing, duplicate ids, and suppressed rows. Diagnose each issue from dossier behavior notes and the frozen original workflow source; repair the pipeline so outputs match `/app/docs/report_spec.json`.
-
-Every `issues_found` item must include `id`, `severity`, `description`, `resolution`, and `evidence` with `dossier_quote`, `pipeline_evidence`, and `repair_action`. `dossier_quote` must be a **verbatim excerpt** from `/app/incident/export_dossier.md` (matching after whitespace normalization). `pipeline_evidence` must be a **literal substring excerpt** from the frozen original workflow source at `/app/workflow/.export_report.original` (not paraphrased text and not extracted from an already patched file).
-
-After repair, `output_paths` must point to the actual files under the effective output directory (`--output-dir`, default `/app/output`): `<output-dir>/summary.json`, `<output-dir>/flagged.jsonl`, and `<output-dir>/service_matrix.json`. `summary.json` must include `schema_version`, `raw_event_count`, `unique_event_ids`, `total_events`, alphabetical `level_counts`, `services`, `flagged_count`, and `suppressed_excluded_count`. `service_matrix.json` must map each service to alphabetical per-level counts. `flagged.jsonl` must use compact JSON (no spaces after `:`). `repair_audit.json` must include `post_repair.rerun_flagged_count`.
-
-`repair_audit.json` mapping schema is strict: `removed_tokens` must be an object mapping each forbidden token string to a boolean (`true` when removed from executable patched code), and `pre_repair.pipeline_tokens_present` must be an object mapping each forbidden token string to a boolean (`true` when present in the frozen broken snapshot before repair).
-
-Remove forbidden bug tokens from executable pipeline code after repair (`event["timestamp"]`, `level == "error"`). Comments may mention removed bugs. Compute every summary, matrix, and flagged value from input JSON — do not hard-code verifier numbers.
-
-The patched `/app/workflow/export_report.py` must honor `--input` and `--output-dir` (defaults: `/app/data/events.json`, `/app/output`) and work with alternate input files supplied by tests.
-
-Report shape, audit schema, and output formats are defined in `/app/docs/report_spec.json`. Match that spec exactly.
+after repair: `summary.json`, `service_matrix.json`, `flagged.jsonl`, `diagnosis.json`, and `repair_audit.json` under the output dir. compute all counts from input JSON; do not hard-code verifier numbers. patched pipeline must accept `--input` and `--output-dir` and work with alternate input files the verifier supplies.

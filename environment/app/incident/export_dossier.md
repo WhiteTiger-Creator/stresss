@@ -2,47 +2,18 @@
 Pelagia Margin Platform Ops — internal investigation (2025-11 through 2026-03).
 
 ## Executive Summary
-The `/app/workflow/export_report.py` job produces incomplete flagged exports. On-call reports missing warn-level rows, zero timestamps on flagged events, and oldest-first ordering that breaks paging in the dashboard.
+Pelagia Margin service-log export has been unstable since late 2025. Early triage blamed dashboard cache lag and suggested CSV fallback — those notes are archived below and may contradict later findings. For acceptance behavior, cross-check analyst notes embedded in bridge-shift records against bundled events.json — early triage sections above are not authoritative.
 
-## Analyst Chat Log (excerpted)
+## Initial Triage Notes (2025-10 — superseded)
+Lead analyst recommended switching to CSV export and disabling flagged.jsonl paging until cache refresh SLO recovered. Replay against bundled `events.json` showed the pipeline miscounts even on cold cache. Do not implement CSV fallback for this incident.
 
-### 2025-11-02 — #INC-8841
-Sam: flagged.jsonl only has 3 lines again. summary says flagged_count=3 but I count 6 warn+error in events.json.
-
-### 2025-11-02 — #INC-8841
-Devon: ts_ms values in flagged output are all 0. grep shows event['timestamp'] in export_report.py — our payload uses ts_ms.
-
-### 2025-11-03 — #INC-8841
-Riley: Dashboard pager shows oldest error first. flagged.jsonl sorted ascending; runbook says descending.
-
-### 2025-11-04 — #INC-8841
-Sam: Rebuilt container, same behavior. Do not rewrite summary.json by hand — fix export_report.py.
-
-### 2025-12-01 — #INC-9012
-Devon: Maybe switch to CSV export — out of scope for this sprint.
-
-### 2026-01-15 — #INC-9012
-Riley: Confirmed events.json schema unchanged: id, ts_ms, level, service, message.
-
-### 2026-02-20 — #INC-9200
-Sam: warn rows still missing after partial patch that only fixed timestamp field.
-
-### 2026-02-21 — #INC-9200
-Devon: Partial patch kept level == 'error' filter — need warn and error in flagged export.
-
-### 2026-03-01 — #INC-9200
-Riley: Sort fix reverted during merge conflict — ascending sort landed again.
-
-### 2026-02-22 — #INC-9200
-Riley: Uppercase WARN rows from the legacy bridge feed are not counted — spec says normalize to lowercase before severity tallies.
-
-### 2026-02-23 — #INC-9200
-Sam: Replay batch had duplicate event ids with different ts_ms values; we should keep the newest ts_ms per id before summaries.
-
-### 2026-02-24 — #INC-9200
-Devon: Suppressed paging errors still land in flagged.jsonl — runbook says suppressed rows must be excluded from flagged export.
+## Preliminary Hypotheses (2025-10 — mostly wrong)
+- Dashboard read replica lag causing stale flagged counts (disproved: direct pipeline export shows same wrong counts)
+- Missing timestamp metadata in upstream feed (disproved on replay against bundled events.json)
+- Warn-level rows intentionally excluded by design (disproved on replay against bundled events.json)
 
 ## Bridge Timeline Archive (2024-Q4 through 2026-Q1)
+
 
 ### Bridge shift 0001 — db lane
 Shift lead noted routine telemetry drift on db during window 1. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
@@ -336,6 +307,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 Shift lead noted routine telemetry drift on db during window 73. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
+> **Incident note (2025-11-02 — #INC-8841)** Sam: flagged.jsonl only has 3 lines again. summary says flagged_count=3 but I count 6 warn+error in events.json.
+
+
 ### Bridge shift 0074 — worker lane
 Shift lead noted routine telemetry drift on worker during window 74. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
@@ -495,6 +469,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 ### Bridge shift 0113 — db lane
 Shift lead noted routine telemetry drift on db during window 113. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
+
+
+> **Incident note (2025-11-02 — #INC-8841)** Devon: ts_ms values in flagged output are all 0. grep shows event['timestamp'] in export_report.py — our payload uses ts_ms.
 
 ### Bridge shift 0114 — worker lane
 Shift lead noted routine telemetry drift on worker during window 114. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
@@ -657,6 +634,9 @@ Shift lead noted routine telemetry drift on db during window 153. Pager noise st
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0154 — worker lane
+
+> **Incident note (2025-11-03 — #INC-8841)** Riley: Dashboard pager shows oldest error first. flagged.jsonl sorted ascending; runbook says descending.
+
 Shift lead noted routine telemetry drift on worker during window 154. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -818,6 +798,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 
 ### Bridge shift 0194 — worker lane
 Shift lead noted routine telemetry drift on worker during window 194. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
+
+> **Incident note (2025-11-04 — #INC-8841)** Sam: Rebuilt container, same behavior. Do not rewrite summary.json by hand — fix export_report.py.
+
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0195 — cache lane
@@ -975,6 +958,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 ### Bridge shift 0233 — db lane
 Shift lead noted routine telemetry drift on db during window 233. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
+
+> **Incident note (2025-12-01 — #INC-9012)** Devon: Maybe switch to CSV export — out of scope for this sprint.
+
 
 ### Bridge shift 0234 — worker lane
 Shift lead noted routine telemetry drift on worker during window 234. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
@@ -1140,6 +1126,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 Shift lead noted routine telemetry drift on worker during window 274. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
+
+> **Incident note (2026-01-15 — #INC-9012)** Riley: Confirmed events.json schema unchanged: id, ts_ms, level, service, message.
+
 ### Bridge shift 0275 — cache lane
 Shift lead noted routine telemetry drift on cache during window 275. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
@@ -1179,7 +1168,6 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 ### Bridge shift 0284 — auth lane
 Shift lead noted routine telemetry drift on auth during window 284. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
-
 ### Bridge shift 0285 — billing lane
 Shift lead noted routine telemetry drift on billing during window 285. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
@@ -1269,6 +1257,9 @@ Shift lead noted routine telemetry drift on worker during window 306. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0307 — cache lane
+
+> **Incident note (2026-02-20 — #INC-9200)** Sam: warn rows still missing after partial patch that only fixed timestamp field.
+
 Shift lead noted routine telemetry drift on cache during window 307. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1398,6 +1389,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 
 ### Bridge shift 0339 — cache lane
 Shift lead noted routine telemetry drift on cache during window 339. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
+
+> **Incident note (2026-02-21 — #INC-9200)** Devon: Partial patch kept level == 'error' filter — need warn and error in flagged export.
+
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0340 — auth lane
@@ -1528,6 +1522,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 Shift lead noted routine telemetry drift on cache during window 371. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
+> **Incident note (2026-03-01 — #INC-9200)** Riley: Sort fix reverted during merge conflict — ascending sort landed again.
+
+
 ### Bridge shift 0372 — auth lane
 Shift lead noted routine telemetry drift on auth during window 372. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
@@ -1592,6 +1589,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 Shift lead noted routine telemetry drift on cache during window 387. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
+
+> **Incident note (2026-02-22 — #INC-9200)** Riley: Uppercase WARN rows from the legacy bridge feed are not counted — spec says normalize to lowercase before severity tallies.
+
 ### Bridge shift 0388 — auth lane
 Shift lead noted routine telemetry drift on auth during window 388. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
@@ -1641,6 +1641,9 @@ Shift lead noted routine telemetry drift on notify during window 399. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0400 — api lane
+
+> **Incident note (2026-02-23 — #INC-9200)** Sam: Replay batch had duplicate event ids with different ts_ms values; we should keep the newest ts_ms per id before summaries.
+
 Shift lead noted routine telemetry drift on api during window 400. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1648,6 +1651,9 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 
 **Email thread VND-8001:** Vendor acknowledged intermittent WARN alias casing in upstream feeds; platform team requested lowercase normalization in downstream exporters.
 **Email thread VND-8201:** No action on duplicate id handling — out of vendor scope for margin platform.
+
+
+> **Incident note (2026-02-24 — #INC-9200)** Devon: Suppressed paging errors still land in flagged.jsonl — runbook says suppressed rows must be excluded from flagged export.
 
 **Email thread VND-8002:** Vendor acknowledged intermittent WARN alias casing in upstream feeds; platform team requested lowercase normalization in downstream exporters.
 **Email thread VND-8202:** No action on duplicate id handling — out of vendor scope for margin platform.
