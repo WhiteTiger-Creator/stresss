@@ -10,9 +10,6 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements-test.txt /tmp/requirements-test.txt
-RUN python3 -m pip install --no-cache-dir -r /tmp/requirements-test.txt
-
 COPY app/ /app/
 RUN cp /app/workflow/export_report.py /app/workflow/.export_report.original \
     && chmod a-w /app/workflow/.export_report.original

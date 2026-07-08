@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.1",
+  "version": "3.2",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -10,6 +10,7 @@
           "dossier": "/app/incident/export_dossier.md",
           "report": "/app/output/diagnosis.json"
         },
+        "must_include_all_allowed_ids": true,
         "must_not_include_repaired_keys": ["verified_summary", "output_paths"]
       },
       "repair": {
@@ -78,15 +79,25 @@
       "pre_repair",
       "post_repair"
     ],
+    "processing_steps": [
+      "normalize_level",
+      "dedupe_by_id",
+      "filter_suppressed",
+      "build_flagged"
+    ],
     "patched_workflow": "/app/workflow/export_report.py",
+    "forbidden_executable_tokens": [
+      "event[\"timestamp\"]",
+      "level == \"error\""
+    ],
     "removed_tokens_schema": {
-      "description": "Map each buggy executable token string found in the frozen snapshot to a boolean (true when absent from patched executable code)."
+      "description": "Map each forbidden_executable_tokens entry to a boolean (true when absent from patched executable code, excluding comments and docstrings)."
     },
     "pre_repair": {
       "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
       "capture_order": "before any write to export_report.py",
       "pipeline_tokens_present_schema": {
-        "description": "Map each buggy executable token string to a boolean (true when present in frozen broken snapshot)."
+        "description": "Map each forbidden_executable_tokens entry to a boolean (true when present in frozen broken snapshot before repair)."
       }
     },
     "post_repair": {
@@ -99,7 +110,16 @@
     "defaults": {
       "input": "/app/data/events.json",
       "output_dir": "/app/output"
-    }
+    },
+    "forbidden_executable_tokens": [
+      "event[\"timestamp\"]",
+      "level == \"error\""
+    ],
+    "required_executable_tokens": [
+      ".lower(",
+      "reverse=True"
+    ],
+    "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
   "outputs": {
     "summary_json": {
@@ -112,7 +132,11 @@
       "level_key_order": ["debug", "error", "info", "warn"]
     },
     "flagged_jsonl": {
-      "required_fields": ["id", "ts_ms", "level", "service", "message"]
+      "required_fields": ["id", "ts_ms", "level", "service", "message"],
+      "sort": "ts_ms descending",
+      "levels_included": ["warn", "error"],
+      "exclude_suppressed": true,
+      "json_format": "compact (no space after colon)"
     }
   }
 }
