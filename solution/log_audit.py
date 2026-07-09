@@ -13,96 +13,50 @@ from pathlib import Path
 
 EVENTS_PATH = Path("/app/data/events.json")
 PIPELINE_PATH = Path("/app/workflow/export_report.py")
+ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
+SPEC_PATH = Path("/app/docs/report_spec.json")
 FORBIDDEN_TOKENS = ('event["timestamp"]', 'level == "error"')
 
-ISSUE_DEFINITIONS = [
-    {
-        "id": "wrong_timestamp_field",
+ISSUE_META = {
+    "wrong_timestamp_field": {
         "severity": "critical",
-        "description": (
-            "The export workflow reads event['timestamp'] instead of event['ts_ms'], "
-            "zeroing flagged timestamps when the legacy field is absent."
-        ),
-        "resolution": "Read ts_ms from each event when building flagged rows.",
-        "evidence": {
-            "dossier_quote": (
-                "Devon: ts_ms values in flagged output are all 0. grep shows event['timestamp'] "
-                "in export_report.py — our payload uses ts_ms."
-            ),
-            "pipeline_evidence": "\"ts_ms\": event[\"timestamp\"] if \"timestamp\" in event else 0,",
-            "repair_action": "Use event ts_ms for flagged.jsonl timestamps.",
-        },
+        "description": "Flagged rows read legacy timestamp instead of ts_ms.",
+        "resolution": "Emit ts_ms from each event in flagged.jsonl.",
     },
-    {
-        "id": "severity_filter",
+    "severity_filter": {
         "severity": "critical",
-        "description": "Flagged export keeps only error-level rows, omitting warn events required by operations.",
-        "resolution": "Include both warn and error severities in flagged.jsonl.",
-        "evidence": {
-            "dossier_quote": (
-                "Devon: Partial patch kept level == 'error' filter — need warn and error in flagged export."
-            ),
-            "pipeline_evidence": "if level == \"error\":",
-            "repair_action": "Include warn and error rows in flagged export.",
-        },
+        "description": "Flagged export keeps only error-level rows.",
+        "resolution": "Include warn and error severities in flagged export.",
     },
-    {
-        "id": "sort_order",
+    "sort_order": {
         "severity": "high",
-        "description": "Flagged rows are sorted ascending by ts_ms; runbook requires descending order.",
+        "description": "Flagged rows are sorted oldest-first.",
         "resolution": "Sort flagged rows by ts_ms descending (reverse=True).",
-        "evidence": {
-            "dossier_quote": (
-                "Riley: Dashboard pager shows oldest error first. flagged.jsonl sorted ascending; "
-                "runbook says descending."
-            ),
-            "pipeline_evidence": "flagged.sort(key=lambda row: row[\"ts_ms\"])",
-            "repair_action": "Sort flagged rows with reverse=True for ts_ms descending output.",
-        },
     },
-    {
-        "id": "level_normalization",
+    "level_normalization": {
         "severity": "high",
-        "description": "Uppercase WARN/Error aliases are not normalized before severity filtering.",
-        "resolution": "Normalize level strings with .lower() before counting and flagging.",
-        "evidence": {
-            "dossier_quote": (
-                "Riley: Uppercase WARN rows from the legacy bridge feed are not counted — spec says "
-                "normalize to lowercase before severity tallies."
-            ),
-            "pipeline_evidence": "level = str(event.get(\"level\", \"\"))",
-            "repair_action": "Normalize level with .lower() before severity checks.",
-        },
+        "description": "Uppercase level aliases are not normalized.",
+        "resolution": "Normalize level strings with .lower() before filtering.",
     },
-    {
-        "id": "dedupe_policy",
+    "dedupe_policy": {
         "severity": "high",
-        "description": "Duplicate event ids are exported multiple times instead of collapsing to the latest row.",
-        "resolution": "Dedupe by event id keeping the highest ts_ms row.",
-        "evidence": {
-            "dossier_quote": (
-                "Sam: Replay batch had duplicate event ids with different ts_ms values; we should keep "
-                "the newest ts_ms per id before summaries."
-            ),
-            "pipeline_evidence": "for event in events:",
-            "repair_action": "dedupe event ids keeping the highest ts_ms before export.",
-        },
+        "description": "Duplicate event ids are exported multiple times.",
+        "resolution": "dedupe event ids keeping the highest ts_ms before export.",
     },
-    {
-        "id": "suppressed_filter",
+    "suppressed_filter": {
         "severity": "high",
-        "description": "Suppressed error rows are written to flagged.jsonl when they must be excluded.",
-        "resolution": "Skip rows where suppressed is true when building flagged.jsonl.",
-        "evidence": {
-            "dossier_quote": (
-                "Devon: Suppressed paging errors still land in flagged.jsonl — runbook says suppressed rows "
-                "must be excluded from flagged export."
-            ),
-            "pipeline_evidence": "\"suppressed_excluded_count\": 0,",
-            "repair_action": "Exclude suppressed true rows from flagged export.",
-        },
+        "description": "Suppressed rows appear in flagged export.",
+        "resolution": "Exclude suppressed rows from flagged export.",
     },
-]
+}
+
+
+def _normalize_ws(text: str) -> str:
+    return " ".join(text.split())
+
+
+def load_spec() -> dict:
+    return json.loads(SPEC_PATH.read_text())
 
 
 def load_events(path: Path = EVENTS_PATH) -> list[dict]:
@@ -130,6 +84,79 @@ def pre_repair_audit() -> dict:
     }
 
 
+def _line_contains_all(line: str, terms: list[str]) -> bool:
+    return all(term in line for term in terms)
+
+
+def find_dossier_quote(dossier_text: str, terms: list[str]) -> str:
+    normalized = _normalize_ws(dossier_text)
+    candidates: list[str] = []
+    for line in dossier_text.splitlines():
+        stripped = line.strip()
+        if len(stripped) < 30 or not _line_contains_all(stripped, terms):
+            continue
+        if _normalize_ws(stripped) in normalized:
+            candidates.append(stripped)
+    if not candidates:
+        raise ValueError(f"no dossier quote found for terms {terms}")
+    return max(candidates, key=len)
+
+
+def find_pipeline_evidence(original_pipeline: str, terms: list[str]) -> str:
+    for line in original_pipeline.splitlines():
+        stripped = line.strip()
+        if stripped and _line_contains_all(stripped, terms):
+            return stripped
+    if all(term in original_pipeline for term in terms):
+        for line in original_pipeline.splitlines():
+            if any(term in line for term in terms):
+                return line.strip()
+    raise ValueError(f"no pipeline evidence found for terms {terms}")
+
+
+def build_repair_action(issue_id: str, terms: list[str]) -> str:
+    templates = {
+        "wrong_timestamp_field": "Use event ts_ms for flagged.jsonl timestamps.",
+        "severity_filter": "Include warn and error rows in flagged export.",
+        "sort_order": "Sort flagged rows with reverse=True for ts_ms descending output.",
+        "level_normalization": "Normalize level with .lower() before severity checks.",
+        "dedupe_policy": "dedupe event ids keeping the highest ts_ms before export.",
+        "suppressed_filter": "Exclude suppressed true rows from flagged export.",
+    }
+    action = templates[issue_id]
+    for term in terms:
+        if term not in action:
+            action = f"{action} ({term})"
+    return action
+
+
+def build_issues_from_sources(dossier_text: str, original_pipeline: str, spec: dict) -> list[dict]:
+    evidence_spec = spec["diagnosis_report"]["issues_found_item"]["evidence"][
+        "required_terms_by_issue"
+    ]
+    allowed_ids = spec["diagnosis_report"]["issues_found_item"]["allowed_ids"]
+    issues = []
+    for issue_id in allowed_ids:
+        terms = evidence_spec[issue_id]
+        meta = ISSUE_META[issue_id]
+        issues.append(
+            {
+                "id": issue_id,
+                "severity": meta["severity"],
+                "description": meta["description"],
+                "resolution": meta["resolution"],
+                "evidence": {
+                    "dossier_quote": find_dossier_quote(dossier_text, terms["dossier_quote"]),
+                    "pipeline_evidence": find_pipeline_evidence(
+                        original_pipeline, terms["pipeline_evidence"]
+                    ),
+                    "repair_action": build_repair_action(issue_id, terms["repair_action"]),
+                },
+            }
+        )
+    return issues
+
+
 def patch_workflow() -> None:
     for candidate in (
         Path(__file__).resolve().parent / "export_report_fixed.py",
@@ -144,12 +171,13 @@ def patch_workflow() -> None:
 def build_diagnosis_report(
     status: str,
     events: list[dict],
+    issues: list[dict],
     summary: dict | None = None,
     output_dir: Path | None = None,
 ) -> dict:
     report = {
         "pipeline_status": status,
-        "issues_found": ISSUE_DEFINITIONS,
+        "issues_found": issues,
         "input_stats": input_stats(events),
     }
     if summary is not None and output_dir is not None:
@@ -163,9 +191,12 @@ def build_diagnosis_report(
 
 
 def cmd_diagnose(dossier: Path, report_path: Path) -> None:
-    _ = dossier.read_text(encoding="utf-8", errors="replace")
+    dossier_text = dossier.read_text(encoding="utf-8", errors="replace")
+    spec = load_spec()
+    original_pipeline = ORIGINAL_PIPELINE.read_text()
     events = load_events()
-    report = build_diagnosis_report("diagnosed", events)
+    issues = build_issues_from_sources(dossier_text, original_pipeline, spec)
+    report = build_diagnosis_report("diagnosed", events, issues)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2) + "\n")
 
@@ -175,6 +206,12 @@ def cmd_repair(output_dir: Path) -> None:
     diagnosis_path = output_dir / "diagnosis.json"
     audit_path = output_dir / "repair_audit.json"
     rerun_dir = output_dir / "rerun"
+    dossier_path = Path("/app/incident/export_dossier.md")
+
+    spec = load_spec()
+    dossier_text = dossier_path.read_text(encoding="utf-8", errors="replace")
+    original_pipeline = ORIGINAL_PIPELINE.read_text()
+    issues = build_issues_from_sources(dossier_text, original_pipeline, spec)
 
     pre_audit = pre_repair_audit()
     patch_workflow()
@@ -212,18 +249,13 @@ def cmd_repair(output_dir: Path) -> None:
 
     events = load_events()
     summary = json.loads((output_dir / "summary.json").read_text())
-    diagnosis = build_diagnosis_report("repaired", events, summary, output_dir)
+    diagnosis = build_diagnosis_report("repaired", events, issues, summary, output_dir)
     diagnosis_path.write_text(json.dumps(diagnosis, indent=2) + "\n")
 
     code = PIPELINE_PATH.read_text()
     audit = {
         "patched_workflow": str(PIPELINE_PATH),
-        "processing_steps": [
-            "normalize_level",
-            "dedupe_by_id",
-            "filter_suppressed",
-            "build_flagged",
-        ],
+        "processing_steps": spec["repair_audit"]["processing_steps"],
         "removed_tokens": {token: token not in code for token in FORBIDDEN_TOKENS},
         "pre_repair": pre_audit,
         "post_repair": {

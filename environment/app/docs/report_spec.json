@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.2",
+  "version": "3.3",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -11,7 +11,8 @@
           "report": "/app/output/diagnosis.json"
         },
         "must_include_all_allowed_ids": true,
-        "must_not_include_repaired_keys": ["verified_summary", "output_paths"]
+        "must_not_include_repaired_keys": ["verified_summary", "output_paths"],
+        "input_events_path": "/app/data/events.json"
       },
       "repair": {
         "usage": "python3 /app/log_audit.py repair --output-dir PATH",
@@ -46,12 +47,45 @@
         "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
-        "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)"
+        "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
+        "required_terms_by_issue": {
+          "wrong_timestamp_field": {
+            "dossier_quote": ["timestamp", "ts_ms"],
+            "pipeline_evidence": ["event[\"timestamp\"]"],
+            "repair_action": ["ts_ms"]
+          },
+          "severity_filter": {
+            "dossier_quote": ["warn", "error"],
+            "pipeline_evidence": ["level == \"error\""],
+            "repair_action": ["warn"]
+          },
+          "sort_order": {
+            "dossier_quote": ["ascending", "descending"],
+            "pipeline_evidence": ["sort", "ts_ms"],
+            "repair_action": ["reverse=True"]
+          },
+          "level_normalization": {
+            "dossier_quote": ["WARN", "lowercase"],
+            "pipeline_evidence": ["level"],
+            "repair_action": [".lower("]
+          },
+          "dedupe_policy": {
+            "dossier_quote": ["duplicate", "ts_ms"],
+            "pipeline_evidence": ["for event in events"],
+            "repair_action": ["dedupe"]
+          },
+          "suppressed_filter": {
+            "dossier_quote": ["suppressed", "excluded"],
+            "pipeline_evidence": ["suppressed"],
+            "repair_action": ["suppressed"]
+          }
+        }
       }
     },
     "input_stats": {
       "required_fields": ["event_count", "unique_event_ids", "services"],
-      "services_sort": "ascending alphabetical"
+      "services_sort": "ascending alphabetical",
+      "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {
       "required_fields": [
@@ -70,6 +104,12 @@
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
       "service_matrix_json": "<output-dir>/service_matrix.json"
     }
+  },
+  "canonicalization": {
+    "dedupe_by_id": "collapse duplicate event ids, keeping the row with the highest ts_ms",
+    "level_normalization": "lowercase level strings before counting and flagging",
+    "total_events": "count canonical deduped events (suppressed rows remain in totals)",
+    "flagged_export": "include warn and error only, exclude suppressed=true, sort ts_ms descending"
   },
   "repair_audit": {
     "required_keys": [
@@ -138,5 +178,9 @@
       "exclude_suppressed": true,
       "json_format": "compact (no space after colon)"
     }
+  },
+  "long_context": {
+    "dossier_path": "/app/incident/export_dossier.md",
+    "minimum_line_count": 500
   }
 }
