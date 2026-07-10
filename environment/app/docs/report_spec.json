@@ -114,6 +114,7 @@
     "ts_ms_normalization": "coerce ts_ms with int(str(ts_ms).strip()); invalid values become 0",
     "message_normalization": "collapse internal whitespace in message using split/join normalization before tie-breaks and output",
     "suppressed_normalization": "coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false)",
+    "canonical_order": "after dedupe, canonical rows are sorted by ts_ms ascending (stable for ties)",
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
     "flagged_export": "include warn and error only, exclude suppressed=true, sort by ts_ms descending then severity rank descending then id ascending"
   },
@@ -181,7 +182,7 @@
     "summary_json": {
       "schema_version": "service-log-report-v2",
       "level_counts_key_order": ["debug", "error", "info", "warn"],
-      "canonical_fingerprint": "sha1 over canonical rows joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0"
+      "canonical_fingerprint": "sha1 over canonical rows in canonical_order joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0"
     },
     "service_matrix_json": {
       "description": "Per-service level counts from canonical processed events.",

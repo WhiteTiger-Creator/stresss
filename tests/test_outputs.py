@@ -733,3 +733,37 @@ def test_flagged_sort_tie_break_on_severity_then_id(tmp_path_factory):
     flagged = _flagged_rows(out_dir / "flagged.jsonl")
     assert [row["id"] for row in flagged] == ["a9", "z1", "z2"]
     assert [row["level"] for row in flagged] == ["error", "error", "warn"]
+
+
+def test_canonical_fingerprint_uses_ts_ms_ascending_canonical_order(tmp_path_factory):
+    events = [
+        {"id": "f1", "ts_ms": 500, "level": "warn", "service": "api", "message": "late"},
+        {"id": "f2", "ts_ms": 100, "level": "info", "service": "api", "message": "early"},
+        {"id": "f3", "ts_ms": " 300 ", "level": "error", "service": "database", "message": "mid"},
+    ]
+    input_path = tmp_path_factory.mktemp("fingerprint_order") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("fingerprint_order_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    summary = json.loads((out_dir / "summary.json").read_text())
+    canonical = _canonicalize_events(events)
+    assert [row["ts_ms"] for row in canonical] == [100, 300, 500]
+    expected_fingerprint = hashlib.sha1(
+        "\n".join(
+            f"{row['id']}|{row['ts_ms']}|{row['level']}|{row['service']}|{row['message']}|"
+            f"{1 if _normalize_suppressed(row.get('suppressed', False)) else 0}"
+            for row in canonical
+        ).encode("utf-8")
+    ).hexdigest()
+    assert summary["canonical_fingerprint"] == expected_fingerprint
+
+
+def test_pipeline_does_not_reference_test_or_solution_artifacts():
+    pipeline_code = _executable_text(PIPELINE.read_text())
+    cli_code = _executable_text(CLI.read_text())
+    forbidden = ["/tests", "expected_summary.json", "fixtures/alt_events.json", "/solution/"]
+    for token in forbidden:
+        assert token not in pipeline_code
+        assert token not in cli_code
