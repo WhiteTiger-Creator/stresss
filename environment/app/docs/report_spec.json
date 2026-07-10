@@ -48,31 +48,32 @@
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
+        "term_matching": "dossier_quote and repair_action term checks are case-insensitive; pipeline_evidence term checks are case-sensitive literal substrings",
         "required_terms_by_issue": {
           "wrong_timestamp_field": {
-            "dossier_quote": ["timestamp", "ts_ms"],
+            "dossier_quote": ["ts_ms"],
             "pipeline_evidence": ["event[\"timestamp\"]"],
             "repair_action": ["ts_ms"]
           },
           "severity_filter": {
-            "dossier_quote": ["warn", "error"],
+            "dossier_quote": ["warn"],
             "pipeline_evidence": ["level == \"error\""],
             "repair_action": ["warn"]
           },
           "sort_order": {
             "dossier_quote": ["ascending", "descending"],
             "pipeline_evidence": ["sort", "ts_ms"],
-            "repair_action": ["reverse=True"]
+            "repair_action": ["descending"]
           },
           "level_normalization": {
             "dossier_quote": ["WARN", "lowercase"],
             "pipeline_evidence": ["level"],
-            "repair_action": [".lower("]
+            "repair_action": ["lower"]
           },
           "dedupe_policy": {
             "dossier_quote": ["duplicate", "ts_ms"],
             "pipeline_evidence": ["for event in events"],
-            "repair_action": ["dedupe"]
+            "repair_action": ["duplicate"]
           },
           "suppressed_filter": {
             "dossier_quote": ["suppressed", "excluded"],

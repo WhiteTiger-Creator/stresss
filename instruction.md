@@ -4,7 +4,15 @@ months of incident notes are in `/app/incident/export_dossier.md` (long-context 
 
 build `/app/log_audit.py` with `diagnose` and `repair` subcommands per spec. `diagnose` reads `/app/data/events.json` for `input_stats` (no separate `--input` flag on diagnose), writes a JSON report from `--dossier` / `--report`, and must **not** include `verified_summary` or `output_paths`. `repair` patches `/app/workflow/export_report.py` in place and writes outputs under `--output-dir` (default `/app/output`).
 
-keep `/app/workflow/.export_report.original` read-only and untouched. diagnosis evidence must cite that frozen snapshot (literal substrings) and verbatim dossier excerpts — not paraphrases and not text from already-patched code. `issues_found` must include **every** allowed issue id from the spec on both diagnose and repair runs. for each issue, evidence fields must satisfy the substring terms in `required_terms_by_issue` inside `/app/docs/report_spec.json` (case-sensitive).
+keep `/app/workflow/.export_report.original` read-only and untouched. diagnosis evidence must cite that frozen snapshot (literal substrings) and verbatim dossier excerpts — not paraphrases and not text from already-patched code. `issues_found` must include **every** allowed issue id from the spec on both diagnose and repair runs. for each issue, evidence fields must satisfy the substring terms in `required_terms_by_issue` inside `/app/docs/report_spec.json`.
+
+minimum evidence cues by issue (see spec for the exact contract):
+- `wrong_timestamp_field`: mention `ts_ms`; include pipeline token `event["timestamp"]`
+- `severity_filter`: mention `warn`; include pipeline token `level == "error"`
+- `sort_order`: mention `descending` recency and sort behavior
+- `level_normalization`: mention lowercase normalization
+- `dedupe_policy`: mention duplicate-id collapse with newest `ts_ms`
+- `suppressed_filter`: mention suppressed rows excluded from flagged export
 
 after repair, write under the output dir: `summary.json`, `service_matrix.json`, `flagged.jsonl`, `diagnosis.json`, and `repair_audit.json`. `flagged.jsonl` must use compact JSON (`json.dumps(..., separators=(",", ":"))`, no space after `:`). `repair_audit.json` must record `pre_repair` **before** patching, use the exact `processing_steps` list from the spec, and map each forbidden executable token string to booleans in `removed_tokens` and `pre_repair.pipeline_tokens_present`. the patched pipeline must remove forbidden tokens from executable code and include required repair markers from the spec.
 

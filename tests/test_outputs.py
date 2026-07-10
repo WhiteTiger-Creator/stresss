@@ -257,12 +257,12 @@ def test_issue_evidence(diagnosis: dict):
             assert len(evidence[key]) >= 10
         assert len(evidence["dossier_quote"]) >= 30
         for term in terms["dossier_quote"]:
-            assert term in evidence["dossier_quote"]
+            assert term.lower() in evidence["dossier_quote"].lower()
         for term in terms["pipeline_evidence"]:
             assert term in evidence["pipeline_evidence"]
         assert evidence["pipeline_evidence"] in original_pipeline
         for term in terms["repair_action"]:
-            assert term in evidence["repair_action"]
+            assert term.lower() in evidence["repair_action"].lower()
 
 
 def test_dossier_quotes_are_verbatim(diagnosis: dict, dossier_text: str):
