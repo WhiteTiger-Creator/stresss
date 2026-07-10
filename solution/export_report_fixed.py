@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -163,6 +164,13 @@ def export_report(events: list[dict], output_dir: Path) -> None:
             if normalize_suppressed(event.get("suppressed", False))
             and event["level"] in FLAGGED_LEVELS
         ),
+        "canonical_fingerprint": hashlib.sha1(
+            "\n".join(
+                f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
+                f"{event['message']}|{1 if normalize_suppressed(event.get('suppressed', False)) else 0}"
+                for event in canonical
+            ).encode("utf-8")
+        ).hexdigest(),
     }
 
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

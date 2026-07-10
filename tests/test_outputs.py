@@ -196,6 +196,13 @@ def _compute_summary(events: list[dict]) -> dict:
             if _normalize_suppressed(event.get("suppressed", False))
             and event["level"] in FLAGGED_LEVELS
         ),
+        "canonical_fingerprint": hashlib.sha1(
+            "\n".join(
+                f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
+                f"{event['message']}|{1 if _normalize_suppressed(event.get('suppressed', False)) else 0}"
+                for event in canonical
+            ).encode("utf-8")
+        ).hexdigest(),
     }
 
 
@@ -359,9 +366,11 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "services",
         "flagged_count",
         "suppressed_excluded_count",
+        "canonical_fingerprint",
     ):
         assert verified[key] == expected[key]
     assert list(verified["level_counts"].keys()) == list(LEVEL_ORDER)
+    assert len(verified["canonical_fingerprint"]) == 40
 
 
 def test_summary_computed_from_events(summary: dict):
@@ -471,6 +480,7 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["raw_event_count"] == alt["raw_event_count"]
     assert summary["flagged_count"] == alt["flagged_count"]
     assert summary["suppressed_excluded_count"] == alt["suppressed_excluded_count"]
+    assert summary["canonical_fingerprint"] == alt["canonical_fingerprint"]
     assert [row["id"] for row in flagged] == alt["flagged_ids_desc"]
 
 

@@ -97,7 +97,8 @@
         "level_counts",
         "services",
         "flagged_count",
-        "suppressed_excluded_count"
+        "suppressed_excluded_count",
+        "canonical_fingerprint"
       ]
     },
     "output_paths": {
@@ -179,7 +180,8 @@
   "outputs": {
     "summary_json": {
       "schema_version": "service-log-report-v2",
-      "level_counts_key_order": ["debug", "error", "info", "warn"]
+      "level_counts_key_order": ["debug", "error", "info", "warn"],
+      "canonical_fingerprint": "sha1 over canonical rows joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0"
     },
     "service_matrix_json": {
       "description": "Per-service level counts from canonical processed events.",

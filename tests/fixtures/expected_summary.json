@@ -12,6 +12,7 @@
   "services": ["api", "db", "worker"],
   "flagged_count": 9,
   "suppressed_excluded_count": 1,
+  "canonical_fingerprint": "c2cccc075c50e66f27fa3726a9ed9cafa4335e9a",
   "event_count": 19,
   "unique_ids": 16,
   "expected_flagged_ids_desc": ["e14", "e16", "e13", "e10", "e09", "e07", "e03", "e05", "e02"],
@@ -48,6 +49,7 @@
       "warn": 2
     },
     "services": ["api", "db", "worker"],
+    "canonical_fingerprint": "c57d7f588eda8ac08635f1507ae8a7d5719d60f2",
     "flagged_ids_desc": ["a4", "a2"],
     "flagged_ts_ms_desc": [150, 120]
   }
