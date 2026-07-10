@@ -39,6 +39,7 @@ REQUIRED_TOKENS = tuple(
 )
 FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
+SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
 
 
 def _normalize_ws(text: str) -> str:
@@ -76,20 +77,56 @@ def _load_events(path: Path) -> list[dict]:
     return json.loads(path.read_text())
 
 
+def _normalize_level(value: object) -> str:
+    return str(value).strip().lower()
+
+
+def _normalize_service(value: object) -> str:
+    return str(value).strip().lower()
+
+
+def _normalize_suppressed(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no", ""}:
+            return False
+    return bool(value)
+
+
 def _canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
         normalized = dict(event)
-        normalized["level"] = str(normalized.get("level", "")).lower()
+        normalized["level"] = _normalize_level(normalized.get("level", ""))
+        normalized["service"] = _normalize_service(normalized.get("service", ""))
+        normalized["suppressed"] = _normalize_suppressed(normalized.get("suppressed", False))
         event_id = str(normalized["id"])
         current = deduped.get(event_id)
-        if current is None or normalized["ts_ms"] > current["ts_ms"]:
+        should_replace = current is None or normalized["ts_ms"] > current["ts_ms"]
+        if (
+            not should_replace
+            and current is not None
+            and normalized["ts_ms"] == current["ts_ms"]
+        ):
+            current_rank = SEVERITY_RANK.get(str(current.get("level", "")), 0)
+            next_rank = SEVERITY_RANK.get(str(normalized.get("level", "")), 0)
+            if next_rank > current_rank:
+                should_replace = True
+            elif next_rank == current_rank:
+                should_replace = str(normalized.get("message", "")) > str(
+                    current.get("message", "")
+                )
+        if should_replace:
             deduped[event_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["ts_ms"])
 
 
 def _is_flagged(event: dict) -> bool:
-    if event.get("suppressed") is True:
+    if _normalize_suppressed(event.get("suppressed", False)):
         return False
     return event["level"] in FLAGGED_LEVELS
 
@@ -97,8 +134,8 @@ def _is_flagged(event: dict) -> bool:
 def _build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     matrix: dict[str, dict[str, int]] = {}
     for event in events:
-        service = str(event.get("service", ""))
-        level = str(event.get("level", ""))
+        service = _normalize_service(event.get("service", ""))
+        level = _normalize_level(event.get("level", ""))
         matrix.setdefault(service, {name: 0 for name in LEVEL_ORDER})
         if level in matrix[service]:
             matrix[service][level] += 1
@@ -126,7 +163,8 @@ def _compute_summary(events: list[dict]) -> dict:
         "suppressed_excluded_count": sum(
             1
             for event in canonical
-            if event.get("suppressed") is True and event["level"] in FLAGGED_LEVELS
+            if _normalize_suppressed(event.get("suppressed", False))
+            and event["level"] in FLAGGED_LEVELS
         ),
     }
 
@@ -467,3 +505,92 @@ def test_repair_supports_custom_output_dir(tmp_path_factory, expected: dict):
         assert summary["flagged_count"] == expected["flagged_count"]
     finally:
         PIPELINE.write_text(current)
+
+
+def test_service_and_suppressed_normalization_edge_cases(tmp_path_factory):
+    events = [
+        {
+            "id": "s1",
+            "ts_ms": 10,
+            "level": " WARN ",
+            "service": " API ",
+            "message": "warn one",
+        },
+        {
+            "id": "s2",
+            "ts_ms": 20,
+            "level": " error ",
+            "service": "api",
+            "message": "suppressed string true",
+            "suppressed": "YeS",
+        },
+        {
+            "id": "s3",
+            "ts_ms": 30,
+            "level": "warn",
+            "service": " Api  ",
+            "message": "kept",
+            "suppressed": "no",
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("norm") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("norm_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    summary = json.loads((out_dir / "summary.json").read_text())
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    matrix = json.loads((out_dir / "service_matrix.json").read_text())
+
+    assert summary["services"] == ["api"]
+    assert summary["flagged_count"] == 2
+    assert summary["suppressed_excluded_count"] == 1
+    assert [row["id"] for row in flagged] == ["s3", "s1"]
+    assert matrix == {"api": {"debug": 0, "error": 1, "info": 0, "warn": 2}}
+
+
+def test_dedupe_tie_break_on_level_then_message(tmp_path_factory):
+    events = [
+        {
+            "id": "d1",
+            "ts_ms": 100,
+            "level": "warn",
+            "service": "worker",
+            "message": "aaa",
+        },
+        {
+            "id": "d1",
+            "ts_ms": 100,
+            "level": "error",
+            "service": "worker",
+            "message": "bbb",
+        },
+        {
+            "id": "d2",
+            "ts_ms": 200,
+            "level": "warn",
+            "service": "worker",
+            "message": "alpha",
+        },
+        {
+            "id": "d2",
+            "ts_ms": 200,
+            "level": "warn",
+            "service": "worker",
+            "message": "zeta",
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("tie") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("tie_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    kept = {row["id"]: row for row in flagged}
+
+    assert len(flagged) == 2
+    assert kept["d1"]["level"] == "error"
+    assert kept["d1"]["message"] == "bbb"
+    assert kept["d2"]["message"] == "zeta"

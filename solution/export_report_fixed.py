@@ -10,26 +10,63 @@ from pathlib import Path
 SCHEMA_VERSION = "service-log-report-v2"
 FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
+SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
 
 
 def load_events(path: Path) -> list[dict]:
     return json.loads(path.read_text())
 
 
+def normalize_level(value: object) -> str:
+    return str(value).strip().lower()
+
+
+def normalize_service(value: object) -> str:
+    return str(value).strip().lower()
+
+
+def normalize_suppressed(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no", ""}:
+            return False
+    return bool(value)
+
+
 def canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
         normalized = dict(event)
-        normalized["level"] = str(normalized.get("level", "")).lower()
+        normalized["level"] = normalize_level(normalized.get("level", ""))
+        normalized["service"] = normalize_service(normalized.get("service", ""))
+        normalized["suppressed"] = normalize_suppressed(normalized.get("suppressed", False))
         event_id = str(normalized["id"])
         current = deduped.get(event_id)
-        if current is None or normalized["ts_ms"] > current["ts_ms"]:
+        should_replace = current is None or normalized["ts_ms"] > current["ts_ms"]
+        if (
+            not should_replace
+            and current is not None
+            and normalized["ts_ms"] == current["ts_ms"]
+        ):
+            current_rank = SEVERITY_RANK.get(str(current.get("level", "")), 0)
+            next_rank = SEVERITY_RANK.get(str(normalized.get("level", "")), 0)
+            if next_rank > current_rank:
+                should_replace = True
+            elif next_rank == current_rank:
+                should_replace = str(normalized.get("message", "")) > str(
+                    current.get("message", "")
+                )
+        if should_replace:
             deduped[event_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["ts_ms"])
 
 
 def is_flagged(event: dict) -> bool:
-    if event.get("suppressed") is True:
+    if normalize_suppressed(event.get("suppressed", False)):
         return False
     return event["level"] in FLAGGED_LEVELS
 
@@ -37,8 +74,8 @@ def is_flagged(event: dict) -> bool:
 def build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     matrix: dict[str, dict[str, int]] = {}
     for event in events:
-        service = str(event.get("service", ""))
-        level = str(event.get("level", ""))
+        service = normalize_service(event.get("service", ""))
+        level = normalize_level(event.get("level", ""))
         matrix.setdefault(service, {name: 0 for name in LEVEL_ORDER})
         if level in matrix[service]:
             matrix[service][level] += 1
@@ -83,7 +120,8 @@ def export_report(events: list[dict], output_dir: Path) -> None:
         "suppressed_excluded_count": sum(
             1
             for event in canonical
-            if event.get("suppressed") is True and event["level"] in FLAGGED_LEVELS
+            if normalize_suppressed(event.get("suppressed", False))
+            and event["level"] in FLAGGED_LEVELS
         ),
     }
 

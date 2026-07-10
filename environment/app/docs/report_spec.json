@@ -107,8 +107,10 @@
     }
   },
   "canonicalization": {
-    "dedupe_by_id": "collapse duplicate event ids, keeping the row with the highest ts_ms",
-    "level_normalization": "lowercase level strings before counting and flagging",
+    "dedupe_by_id": "collapse duplicate event ids keeping the row with highest ts_ms; if ts_ms ties, keep higher severity rank (error>warn>info>debug); if still tied, keep lexicographically greater message",
+    "level_normalization": "normalize levels with str(level).strip().lower() before counting and flagging",
+    "service_normalization": "normalize services with str(service).strip().lower() before service lists, matrix keys, and flagged output",
+    "suppressed_normalization": "coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false)",
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
     "flagged_export": "include warn and error only, exclude suppressed=true, sort ts_ms descending"
   },
@@ -122,7 +124,9 @@
     ],
     "processing_steps": [
       "normalize_level",
+      "normalize_service",
       "dedupe_by_id",
+      "normalize_suppressed",
       "filter_suppressed",
       "build_flagged"
     ],
@@ -158,7 +162,9 @@
     ],
     "required_executable_tokens": [
       ".lower(",
-      "reverse=True"
+      ".strip(",
+      "reverse=True",
+      "SEVERITY_RANK"
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
