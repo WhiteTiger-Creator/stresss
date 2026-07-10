@@ -40,6 +40,12 @@ REQUIRED_TOKENS = tuple(
 FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
 SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
+SERVICE_ALIASES = {
+    "api-gw": "api",
+    "api gateway": "api",
+    "database": "db",
+    "worker-batch": "worker",
+}
 
 
 def _normalize_ws(text: str) -> str:
@@ -82,7 +88,19 @@ def _normalize_level(value: object) -> str:
 
 
 def _normalize_service(value: object) -> str:
-    return str(value).strip().lower()
+    normalized = str(value).strip().lower()
+    return SERVICE_ALIASES.get(normalized, normalized)
+
+
+def _normalize_ts_ms(value: object) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def _normalize_message(value: object) -> str:
+    return " ".join(str(value).split())
 
 
 def _normalize_suppressed(value: object) -> bool:
@@ -103,6 +121,8 @@ def _canonicalize_events(events: list[dict]) -> list[dict]:
         normalized = dict(event)
         normalized["level"] = _normalize_level(normalized.get("level", ""))
         normalized["service"] = _normalize_service(normalized.get("service", ""))
+        normalized["ts_ms"] = _normalize_ts_ms(normalized.get("ts_ms", 0))
+        normalized["message"] = _normalize_message(normalized.get("message", ""))
         normalized["suppressed"] = _normalize_suppressed(normalized.get("suppressed", False))
         event_id = str(normalized["id"])
         current = deduped.get(event_id)
@@ -117,9 +137,19 @@ def _canonicalize_events(events: list[dict]) -> list[dict]:
             if next_rank > current_rank:
                 should_replace = True
             elif next_rank == current_rank:
-                should_replace = str(normalized.get("message", "")) > str(
-                    current.get("message", "")
-                )
+                normalized_suppressed = _normalize_suppressed(normalized.get("suppressed", False))
+                current_suppressed = _normalize_suppressed(current.get("suppressed", False))
+                if current_suppressed and not normalized_suppressed:
+                    should_replace = True
+                elif current_suppressed == normalized_suppressed:
+                    next_message = _normalize_message(normalized.get("message", ""))
+                    current_message = _normalize_message(current.get("message", ""))
+                    if next_message > current_message:
+                        should_replace = True
+                    elif next_message == current_message:
+                        next_service = _normalize_service(normalized.get("service", ""))
+                        current_service = _normalize_service(current.get("service", ""))
+                        should_replace = next_service > current_service
         if should_replace:
             deduped[event_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["ts_ms"])
@@ -183,6 +213,8 @@ def _compute_flagged(events: list[dict]) -> list[dict]:
                 "message": event["message"],
             }
         )
+    rows.sort(key=lambda row: row["id"])
+    rows.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     rows.sort(key=lambda row: row["ts_ms"], reverse=True)
     return rows
 
@@ -594,3 +626,100 @@ def test_dedupe_tie_break_on_level_then_message(tmp_path_factory):
     assert kept["d1"]["level"] == "error"
     assert kept["d1"]["message"] == "bbb"
     assert kept["d2"]["message"] == "zeta"
+
+
+def test_ts_ms_normalization_and_invalid_fallback(tmp_path_factory):
+    events = [
+        {
+            "id": "t1",
+            "ts_ms": " 410 ",
+            "level": "warn",
+            "service": "api",
+            "message": " keep   spaces   compact ",
+        },
+        {
+            "id": "t2",
+            "ts_ms": "invalid",
+            "level": "error",
+            "service": "api",
+            "message": "bad ts",
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("ts_norm") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("ts_norm_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    assert [row["id"] for row in flagged] == ["t1", "t2"]
+    assert flagged[0]["ts_ms"] == 410
+    assert flagged[0]["message"] == "keep spaces compact"
+    assert flagged[1]["ts_ms"] == 0
+
+
+def test_service_alias_and_dedupe_tie_break_prefers_non_suppressed_then_service(tmp_path_factory):
+    events = [
+        {
+            "id": "a1",
+            "ts_ms": 100,
+            "level": "warn",
+            "service": "api-gw",
+            "message": "same msg",
+            "suppressed": "yes",
+        },
+        {
+            "id": "a1",
+            "ts_ms": 100,
+            "level": "warn",
+            "service": "api gateway",
+            "message": "same msg",
+            "suppressed": "no",
+        },
+        {
+            "id": "a2",
+            "ts_ms": 200,
+            "level": "warn",
+            "service": "database",
+            "message": "db alias",
+        },
+        {
+            "id": "a3",
+            "ts_ms": 300,
+            "level": "warn",
+            "service": "worker-batch",
+            "message": "worker alias",
+        },
+    ]
+    input_path = tmp_path_factory.mktemp("svc_alias") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("svc_alias_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    summary = json.loads((out_dir / "summary.json").read_text())
+    matrix = json.loads((out_dir / "service_matrix.json").read_text())
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+
+    assert summary["services"] == ["api", "db", "worker"]
+    assert matrix["api"]["warn"] == 1
+    assert matrix["db"]["warn"] == 1
+    assert matrix["worker"]["warn"] == 1
+    assert [row["service"] for row in flagged] == ["worker", "db", "api"]
+
+
+def test_flagged_sort_tie_break_on_severity_then_id(tmp_path_factory):
+    events = [
+        {"id": "z2", "ts_ms": 500, "level": "warn", "service": "api", "message": "warn row"},
+        {"id": "z1", "ts_ms": 500, "level": "error", "service": "api", "message": "error row"},
+        {"id": "a9", "ts_ms": 500, "level": "error", "service": "api", "message": "error same ts"},
+    ]
+    input_path = tmp_path_factory.mktemp("sort_tie") / "events.json"
+    input_path.write_text(json.dumps(events))
+    out_dir = tmp_path_factory.mktemp("sort_tie_out")
+    result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+    assert result.returncode == 0, result.stderr
+
+    flagged = _flagged_rows(out_dir / "flagged.jsonl")
+    assert [row["id"] for row in flagged] == ["a9", "z1", "z2"]
+    assert [row["level"] for row in flagged] == ["error", "error", "warn"]

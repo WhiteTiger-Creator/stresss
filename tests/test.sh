@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 mkdir -p /logs/verifier
 
@@ -7,9 +8,9 @@ if [ "$PWD" = "/" ]; then
     exit 1
 fi
 
-set +e
-
 python3 -m pip install --no-index --find-links /tests/wheels -r /tests/requirements-test.txt
+
+set +e
 
 python3 -m pytest -o cache_dir=/tmp/pytest_cache \
   --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA

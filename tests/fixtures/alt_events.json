@@ -1,7 +1,7 @@
 [
-  {"id": "a1", "ts_ms": 50, "level": "info", "service": "billing", "message": "ok"},
-  {"id": "a2", "ts_ms": 100, "level": "warn", "service": "billing", "message": "slow"},
-  {"id": "a2", "ts_ms": 120, "level": "WARN", "service": "billing", "message": "slow duplicate"},
-  {"id": "a3", "ts_ms": 200, "level": "error", "service": "billing", "message": "fail", "suppressed": true},
-  {"id": "a4", "ts_ms": 150, "level": "warn", "service": "billing", "message": "retry"}
+  {"id": "a1", "ts_ms": 50, "level": "info", "service": "api gateway", "message": "ok"},
+  {"id": "a2", "ts_ms": 100, "level": "warn", "service": "api-gw", "message": "slow"},
+  {"id": "a2", "ts_ms": "120", "level": "WARN", "service": "api-gw", "message": "slow   duplicate"},
+  {"id": "a3", "ts_ms": 200, "level": "error", "service": "database", "message": "fail", "suppressed": true},
+  {"id": "a4", "ts_ms": 150, "level": "warn", "service": "worker-batch", "message": "retry"}
 ]

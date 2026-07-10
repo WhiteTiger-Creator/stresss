@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.3",
+  "version": "3.4",
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
@@ -107,12 +107,14 @@
     }
   },
   "canonicalization": {
-    "dedupe_by_id": "collapse duplicate event ids keeping the row with highest ts_ms; if ts_ms ties, keep higher severity rank (error>warn>info>debug); if still tied, keep lexicographically greater message",
+    "dedupe_by_id": "collapse duplicate event ids keeping the row with highest ts_ms; if ts_ms ties, keep higher severity rank (error>warn>info>debug); if still tied, prefer non-suppressed row; if still tied, keep lexicographically greater normalized message; if still tied, keep lexicographically greater normalized service",
     "level_normalization": "normalize levels with str(level).strip().lower() before counting and flagging",
-    "service_normalization": "normalize services with str(service).strip().lower() before service lists, matrix keys, and flagged output",
+    "service_normalization": "normalize services with str(service).strip().lower() and apply aliases: api-gw->api, api gateway->api, database->db, worker-batch->worker",
+    "ts_ms_normalization": "coerce ts_ms with int(str(ts_ms).strip()); invalid values become 0",
+    "message_normalization": "collapse internal whitespace in message using split/join normalization before tie-breaks and output",
     "suppressed_normalization": "coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false)",
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
-    "flagged_export": "include warn and error only, exclude suppressed=true, sort ts_ms descending"
+    "flagged_export": "include warn and error only, exclude suppressed=true, sort by ts_ms descending then severity rank descending then id ascending"
   },
   "repair_audit": {
     "required_keys": [
@@ -125,6 +127,9 @@
     "processing_steps": [
       "normalize_level",
       "normalize_service",
+      "normalize_service_aliases",
+      "normalize_ts_ms",
+      "normalize_message",
       "dedupe_by_id",
       "normalize_suppressed",
       "filter_suppressed",
@@ -163,8 +168,11 @@
     "required_executable_tokens": [
       ".lower(",
       ".strip(",
+      "int(",
+      ".split(",
       "reverse=True",
-      "SEVERITY_RANK"
+      "SEVERITY_RANK",
+      "SERVICE_ALIASES"
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },

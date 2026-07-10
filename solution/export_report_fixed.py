@@ -11,6 +11,12 @@ SCHEMA_VERSION = "service-log-report-v2"
 FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
 SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
+SERVICE_ALIASES = {
+    "api-gw": "api",
+    "api gateway": "api",
+    "database": "db",
+    "worker-batch": "worker",
+}
 
 
 def load_events(path: Path) -> list[dict]:
@@ -22,7 +28,19 @@ def normalize_level(value: object) -> str:
 
 
 def normalize_service(value: object) -> str:
-    return str(value).strip().lower()
+    normalized = str(value).strip().lower()
+    return SERVICE_ALIASES.get(normalized, normalized)
+
+
+def normalize_ts_ms(value: object) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def normalize_message(value: object) -> str:
+    return " ".join(str(value).split())
 
 
 def normalize_suppressed(value: object) -> bool:
@@ -43,6 +61,8 @@ def canonicalize_events(events: list[dict]) -> list[dict]:
         normalized = dict(event)
         normalized["level"] = normalize_level(normalized.get("level", ""))
         normalized["service"] = normalize_service(normalized.get("service", ""))
+        normalized["ts_ms"] = normalize_ts_ms(normalized.get("ts_ms", 0))
+        normalized["message"] = normalize_message(normalized.get("message", ""))
         normalized["suppressed"] = normalize_suppressed(normalized.get("suppressed", False))
         event_id = str(normalized["id"])
         current = deduped.get(event_id)
@@ -57,9 +77,19 @@ def canonicalize_events(events: list[dict]) -> list[dict]:
             if next_rank > current_rank:
                 should_replace = True
             elif next_rank == current_rank:
-                should_replace = str(normalized.get("message", "")) > str(
-                    current.get("message", "")
-                )
+                normalized_suppressed = normalize_suppressed(normalized.get("suppressed", False))
+                current_suppressed = normalize_suppressed(current.get("suppressed", False))
+                if current_suppressed and not normalized_suppressed:
+                    should_replace = True
+                elif current_suppressed == normalized_suppressed:
+                    next_message = normalize_message(normalized.get("message", ""))
+                    current_message = normalize_message(current.get("message", ""))
+                    if next_message > current_message:
+                        should_replace = True
+                    elif next_message == current_message:
+                        next_service = normalize_service(normalized.get("service", ""))
+                        current_service = normalize_service(current.get("service", ""))
+                        should_replace = next_service > current_service
         if should_replace:
             deduped[event_id] = normalized
     return sorted(deduped.values(), key=lambda row: row["ts_ms"])
@@ -107,6 +137,16 @@ def export_report(events: list[dict], output_dir: Path) -> None:
                 "message": event["message"],
             }
         )
+    flagged.sort(
+        key=lambda row: (
+            row["ts_ms"],
+            SEVERITY_RANK.get(row["level"], 0),
+            row["id"],
+        ),
+        reverse=True,
+    )
+    flagged.sort(key=lambda row: row["id"])
+    flagged.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     flagged.sort(key=lambda row: row["ts_ms"], reverse=True)
 
     summary = {

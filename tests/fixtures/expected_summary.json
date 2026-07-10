@@ -1,21 +1,22 @@
 {
   "schema_version": "service-log-report-v2",
-  "raw_event_count": 17,
-  "unique_event_ids": 15,
-  "total_events": 15,
+  "raw_event_count": 19,
+  "unique_event_ids": 16,
+  "total_events": 16,
   "level_counts": {
     "debug": 1,
     "error": 5,
     "info": 5,
-    "warn": 4
+    "warn": 5
   },
   "services": ["api", "db", "worker"],
-  "flagged_count": 8,
+  "flagged_count": 9,
   "suppressed_excluded_count": 1,
-  "event_count": 17,
-  "unique_ids": 15,
-  "expected_flagged_ids_desc": ["e14", "e13", "e10", "e09", "e07", "e03", "e05", "e02"],
+  "event_count": 19,
+  "unique_ids": 16,
+  "expected_flagged_ids_desc": ["e14", "e16", "e13", "e10", "e09", "e07", "e03", "e05", "e02"],
   "expected_flagged_ts_ms_desc": [
+    1700000008600,
     1700000008600,
     1700000008500,
     1700000007000,
@@ -26,7 +27,7 @@
     1700000002100
   ],
   "expected_service_matrix": {
-    "api": {"debug": 1, "error": 1, "info": 2, "warn": 2},
+    "api": {"debug": 1, "error": 1, "info": 2, "warn": 3},
     "db": {"debug": 0, "error": 1, "info": 1, "warn": 1},
     "worker": {"debug": 0, "error": 3, "info": 2, "warn": 1}
   },
@@ -46,7 +47,7 @@
       "info": 1,
       "warn": 2
     },
-    "services": ["billing"],
+    "services": ["api", "db", "worker"],
     "flagged_ids_desc": ["a4", "a2"],
     "flagged_ts_ms_desc": [150, 120]
   }
