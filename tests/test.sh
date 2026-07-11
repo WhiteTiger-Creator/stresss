@@ -1,5 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 mkdir -p /logs/verifier
 
@@ -8,6 +8,7 @@ if [ "$PWD" = "/" ]; then
     exit 1
 fi
 
+python3 -m pip install --no-index --find-links /tests/wheels -r /tests/requirements-test.txt || \
 python3 -m pip install --break-system-packages --no-index --find-links /tests/wheels -r /tests/requirements-test.txt
 
 set +e
