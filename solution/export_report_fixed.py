@@ -171,6 +171,29 @@ def silence_compaction_checksum(
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
+def probe_overlap_ms(anchor_ms: int, spans: list[tuple[int, int]], lookback_ms: int = 90) -> int:
+    probe_start = anchor_ms - lookback_ms
+    probe_end = anchor_ms + 1
+    total = 0
+    for start_ms, end_ms in spans:
+        overlap_start = max(probe_start, start_ms)
+        overlap_end = min(probe_end, end_ms)
+        if overlap_end > overlap_start:
+            total += overlap_end - overlap_start
+    return total
+
+
+def silence_pressure_score(
+    event: dict, compacted_silence: dict[tuple[str, str], list[tuple[int, int]]]
+) -> int:
+    service = normalize_service(event.get("service", ""))
+    level = normalize_level(event.get("level", ""))
+    ts_ms = normalize_ts_ms(event.get("ts_ms", 0))
+    all_overlap_ms = probe_overlap_ms(ts_ms, compacted_silence.get((service, "all"), []))
+    level_overlap_ms = probe_overlap_ms(ts_ms, compacted_silence.get((service, level), []))
+    return (all_overlap_ms // 25) + (level_overlap_ms // 15)
+
+
 def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -193,6 +216,13 @@ def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]
         if is_silenced(event, compacted_silence):
             silence_excluded_count += 1
             continue
+        pressure_score = silence_pressure_score(event, compacted_silence)
+        event_digest = hashlib.sha1(
+            (
+                f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
+                f"{event['message']}|{pressure_score}"
+            ).encode("utf-8")
+        ).hexdigest()[:10]
         flagged.append(
             {
                 "id": event["id"],
@@ -200,17 +230,12 @@ def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]
                 "level": event["level"],
                 "service": event["service"],
                 "message": event["message"],
+                "silence_pressure_score": pressure_score,
+                "event_digest": event_digest,
             }
         )
-    flagged.sort(
-        key=lambda row: (
-            row["ts_ms"],
-            SEVERITY_RANK.get(row["level"], 0),
-            row["id"],
-        ),
-        reverse=True,
-    )
     flagged.sort(key=lambda row: row["id"])
+    flagged.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
     flagged.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     flagged.sort(key=lambda row: row["ts_ms"], reverse=True)
 
@@ -237,6 +262,13 @@ def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]
             ).encode("utf-8")
         ).hexdigest(),
         "silence_compaction_checksum": silence_compaction_checksum(compacted_silence),
+        "max_silence_pressure_score": max(
+            (row["silence_pressure_score"] for row in flagged),
+            default=0,
+        ),
+        "flagged_digest_checksum": hashlib.sha256(
+            "|".join(row["event_digest"] for row in flagged).encode("utf-8")
+        ).hexdigest(),
     }
 
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

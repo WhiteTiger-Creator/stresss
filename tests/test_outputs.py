@@ -167,6 +167,29 @@ def _silence_compaction_checksum(compacted: dict[tuple[str, str], list[tuple[int
     ).hexdigest()
 
 
+def _probe_overlap_ms(anchor_ms: int, spans: list[tuple[int, int]], lookback_ms: int = 90) -> int:
+    probe_start = anchor_ms - lookback_ms
+    probe_end = anchor_ms + 1
+    total = 0
+    for start_ms, end_ms in spans:
+        overlap_start = max(probe_start, start_ms)
+        overlap_end = min(probe_end, end_ms)
+        if overlap_end > overlap_start:
+            total += overlap_end - overlap_start
+    return total
+
+
+def _silence_pressure_score(
+    event: dict, compacted_silence: dict[tuple[str, str], list[tuple[int, int]]]
+) -> int:
+    service = _normalize_service(event.get("service", ""))
+    level = _normalize_level(event.get("level", ""))
+    ts_ms = _normalize_ts_ms(event.get("ts_ms", 0))
+    all_overlap_ms = _probe_overlap_ms(ts_ms, compacted_silence.get((service, "all"), []))
+    level_overlap_ms = _probe_overlap_ms(ts_ms, compacted_silence.get((service, level), []))
+    return (all_overlap_ms // 25) + (level_overlap_ms // 15)
+
+
 def _canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
@@ -267,6 +290,13 @@ def _compute_summary(events: list[dict], silence_rows: list[dict] | None = None)
             ).encode("utf-8")
         ).hexdigest(),
         "silence_compaction_checksum": _silence_compaction_checksum(compacted_silence),
+        "max_silence_pressure_score": max(
+            (row["silence_pressure_score"] for row in flagged),
+            default=0,
+        ),
+        "flagged_digest_checksum": hashlib.sha256(
+            "|".join(row["event_digest"] for row in flagged).encode("utf-8")
+        ).hexdigest(),
     }
 
 
@@ -281,6 +311,13 @@ def _compute_flagged(events: list[dict], silence_rows: list[dict] | None = None)
             continue
         if _is_silenced(event, compacted_silence):
             continue
+        pressure_score = _silence_pressure_score(event, compacted_silence)
+        event_digest = hashlib.sha1(
+            (
+                f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
+                f"{event['message']}|{pressure_score}"
+            ).encode("utf-8")
+        ).hexdigest()[:10]
         rows.append(
             {
                 "id": event["id"],
@@ -288,9 +325,12 @@ def _compute_flagged(events: list[dict], silence_rows: list[dict] | None = None)
                 "level": event["level"],
                 "service": event["service"],
                 "message": event["message"],
+                "silence_pressure_score": pressure_score,
+                "event_digest": event_digest,
             }
         )
     rows.sort(key=lambda row: row["id"])
+    rows.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
     rows.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     rows.sort(key=lambda row: row["ts_ms"], reverse=True)
     return rows
@@ -439,10 +479,13 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "silence_excluded_count",
         "canonical_fingerprint",
         "silence_compaction_checksum",
+        "max_silence_pressure_score",
+        "flagged_digest_checksum",
     ):
         assert verified[key] == expected[key]
     assert list(verified["level_counts"].keys()) == list(LEVEL_ORDER)
     assert len(verified["canonical_fingerprint"]) == 40
+    assert len(verified["flagged_digest_checksum"]) == 64
 
 
 def test_summary_computed_from_events(summary: dict):
@@ -467,6 +510,8 @@ def test_flagged_sorted_descending(flagged_rows: list[dict], expected: dict):
 def test_flagged_levels(flagged_rows: list[dict]):
     for row in flagged_rows:
         assert row["level"] in FLAGGED_LEVELS
+        assert isinstance(row["silence_pressure_score"], int)
+        assert len(row["event_digest"]) == 10
 
 
 def test_flagged_jsonl_compact_format():
@@ -555,6 +600,8 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["silence_excluded_count"] == alt["silence_excluded_count"]
     assert summary["canonical_fingerprint"] == alt["canonical_fingerprint"]
     assert summary["silence_compaction_checksum"] == alt["silence_compaction_checksum"]
+    assert summary["max_silence_pressure_score"] == alt["max_silence_pressure_score"]
+    assert summary["flagged_digest_checksum"] == alt["flagged_digest_checksum"]
     assert [row["id"] for row in flagged] == alt["flagged_ids_desc"]
 
 
@@ -807,6 +854,33 @@ def test_flagged_sort_tie_break_on_severity_then_id(tmp_path_factory):
     flagged = _flagged_rows(out_dir / "flagged.jsonl")
     assert [row["id"] for row in flagged] == ["a9", "z1", "z2"]
     assert [row["level"] for row in flagged] == ["error", "error", "warn"]
+
+
+def test_flagged_sort_tie_break_on_silence_pressure_score(tmp_path_factory):
+    original_silence = SILENCE_PATH.read_text()
+    try:
+        silence_rows = [
+            {"service": "api", "level_scope": "all", "start_ms": 450, "end_ms": 500},
+            {"service": "api", "level_scope": "error", "start_ms": 430, "end_ms": 500},
+        ]
+        SILENCE_PATH.write_text(json.dumps(silence_rows, indent=2) + "\n")
+        events = [
+            {"id": "p2", "ts_ms": 500, "level": "error", "service": "db", "message": "low pressure"},
+            {"id": "p1", "ts_ms": 500, "level": "error", "service": "api", "message": "high pressure"},
+            {"id": "p3", "ts_ms": 500, "level": "warn", "service": "api", "message": "warn pressure"},
+        ]
+        input_path = tmp_path_factory.mktemp("pressure_sort") / "events.json"
+        input_path.write_text(json.dumps(events))
+        out_dir = tmp_path_factory.mktemp("pressure_sort_out")
+        result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+        assert result.returncode == 0, result.stderr
+
+        flagged = _flagged_rows(out_dir / "flagged.jsonl")
+        assert [row["id"] for row in flagged] == ["p1", "p2", "p3"]
+        assert flagged[0]["silence_pressure_score"] > flagged[1]["silence_pressure_score"]
+        assert flagged[1]["silence_pressure_score"] >= 0
+    finally:
+        SILENCE_PATH.write_text(original_silence)
 
 
 def test_canonical_fingerprint_uses_ts_ms_ascending_canonical_order(tmp_path_factory):

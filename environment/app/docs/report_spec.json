@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.5",
+  "version": "3.6",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -123,7 +123,9 @@
         "suppressed_excluded_count",
         "silence_excluded_count",
         "canonical_fingerprint",
-        "silence_compaction_checksum"
+        "silence_compaction_checksum",
+        "max_silence_pressure_score",
+        "flagged_digest_checksum"
       ]
     },
     "output_paths": {
@@ -145,7 +147,10 @@
     "silence_match_rule": "an event is silenced when start_ms <= ts_ms < end_ms for same normalized service and level_scope in {all, event.level}",
     "canonical_order": "after dedupe, canonical rows are sorted by ts_ms ascending (stable for ties)",
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
-    "flagged_export": "include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, sort by ts_ms descending then severity rank descending then id ascending"
+    "flagged_export": "include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, compute silence_pressure_score and event_digest for included rows, sort by ts_ms descending then severity rank descending then silence_pressure_score descending then id ascending",
+    "silence_pressure_score": "for each included flagged row, compute probe window [ts_ms-90, ts_ms+1) overlap against compacted (service, all) and (service, level) silence windows; score=(all_overlap_ms//25)+(level_overlap_ms//15)",
+    "event_digest": "sha1('id|ts_ms|level|service|message|silence_pressure_score') first 10 lowercase hex chars",
+    "flagged_sort_tiebreaks": "ts_ms desc, severity rank desc, silence_pressure_score desc, id asc"
   },
   "repair_audit": {
     "required_keys": [
@@ -166,6 +171,8 @@
       "normalize_suppressed",
       "load_silence_windows",
       "apply_silence_windows",
+      "compute_silence_pressure",
+      "build_event_digest",
       "filter_suppressed",
       "build_flagged"
     ],
@@ -229,7 +236,9 @@
       "SEVERITY_RANK",
       "SERVICE_ALIASES",
       "SILENCE_WINDOWS_PATH",
-      "silence_compaction_checksum"
+      "silence_compaction_checksum",
+      "silence_pressure_score",
+      "event_digest"
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
@@ -239,7 +248,9 @@
       "level_counts_key_order": ["debug", "error", "info", "warn"],
       "canonical_fingerprint": "sha1 over canonical rows in canonical_order joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0",
       "silence_excluded_count": "number of canonical warn/error rows excluded by silence windows (after suppressed exclusion)",
-      "silence_compaction_checksum": "sha256 over compacted silence rows in canonical order (service, level_scope, start_ms, end_ms) as lines service|level_scope|start_ms|end_ms"
+      "silence_compaction_checksum": "sha256 over compacted silence rows in canonical order (service, level_scope, start_ms, end_ms) as lines service|level_scope|start_ms|end_ms",
+      "max_silence_pressure_score": "maximum silence_pressure_score across final flagged rows (0 when there are no flagged rows)",
+      "flagged_digest_checksum": "sha256('|'.join(event_digest values in final flagged order)) lowercase 64 hex chars"
     },
     "service_matrix_json": {
       "description": "Per-service level counts from canonical processed events.",
@@ -247,8 +258,16 @@
       "level_key_order": ["debug", "error", "info", "warn"]
     },
     "flagged_jsonl": {
-      "required_fields": ["id", "ts_ms", "level", "service", "message"],
-      "sort": "ts_ms descending",
+      "required_fields": [
+        "id",
+        "ts_ms",
+        "level",
+        "service",
+        "message",
+        "silence_pressure_score",
+        "event_digest"
+      ],
+      "sort": "ts_ms descending with tiebreaks severity rank desc, silence_pressure_score desc, id asc",
       "levels_included": ["warn", "error"],
       "exclude_suppressed": true,
       "json_format": "compact (no space after colon)"
