@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 cp "${SCRIPT_DIR}/log_audit.py" /app/log_audit.py
 cp "${SCRIPT_DIR}/export_report_fixed.py" /app/export_report_fixed.py
