@@ -26,7 +26,15 @@
         "usage": "python3 /app/log_audit.py repair --output-dir PATH",
         "defaults": {
           "output_dir": "/app/output"
-        }
+        },
+        "output_dir_contract": "all repaired outputs must be written under the provided --output-dir path; never hardcode /app/output when a custom path is supplied",
+        "required_output_files": [
+          "summary.json",
+          "service_matrix.json",
+          "flagged.jsonl",
+          "diagnosis.json",
+          "repair_audit.json"
+        ]
       }
     }
   },
@@ -56,6 +64,11 @@
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
+        "minimum_lengths": {
+          "dossier_quote": 30,
+          "pipeline_evidence": 10,
+          "repair_action": 10
+        },
         "term_matching": "dossier_quote and repair_action term checks are case-insensitive; pipeline_evidence term checks are case-sensitive literal substrings",
         "required_terms_by_issue": {
           "wrong_timestamp_field": {
@@ -94,6 +107,7 @@
     "input_stats": {
       "required_fields": ["event_count", "unique_event_ids", "services"],
       "services_sort": "ascending alphabetical",
+      "services_normalization": "services must use the same canonicalization as canonicalization.service_normalization (strip/lower + aliases); raw unnormalized spellings are invalid",
       "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {
@@ -170,6 +184,8 @@
     "pre_repair": {
       "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
       "capture_order": "before any write to export_report.py",
+      "capture_source": "/app/workflow/.export_report.original",
+      "capture_rule": "pipeline_source_sha256 and pipeline_tokens_present are computed from the frozen original snapshot bytes before applying any patch to /app/workflow/export_report.py",
       "pipeline_tokens_present_schema": {
         "description": "Map each forbidden_executable_tokens entry to a boolean (true when present in frozen broken snapshot before repair).",
         "required_key_source": "keys must be the exact literal strings from forbidden_executable_tokens (no semantic aliases)",
