@@ -1,0 +1,9 @@
+[
+  {"service": "api gateway", "level_scope": "warn", "start_ms": 1700000008500, "end_ms": 1700000008650},
+  {"service": "api-gw", "level_scope": "warn", "start_ms": 1700000008600, "end_ms": 1700000008700},
+  {"service": "database", "level_scope": "all", "start_ms": 1700000005800, "end_ms": 1700000006100},
+  {"service": "worker-batch", "level_scope": "warn", "start_ms": 1700000002400, "end_ms": 1700000002600},
+  {"service": "worker", "level_scope": "warn", "start_ms": 1700000003900, "end_ms": 1700000004050},
+  {"service": "api", "level_scope": "debug", "start_ms": 0, "end_ms": 1},
+  {"service": "search", "level_scope": "warn", "start_ms": "oops", "end_ms": 10}
+]

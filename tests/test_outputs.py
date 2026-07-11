@@ -23,6 +23,7 @@ PIPELINE = Path("/app/workflow/export_report.py")
 ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
 DOSSIER_PATH = Path("/app/incident/export_dossier.md")
 INPUT_PATH = Path("/app/data/events.json")
+SILENCE_PATH = Path("/app/data/silence_windows.json")
 REPORT_SPEC_PATH = Path("/app/docs/report_spec.json")
 FIXTURES = Path("/tests/fixtures/expected_summary.json")
 SPEC_DATA = json.loads(REPORT_SPEC_PATH.read_text())
@@ -115,6 +116,57 @@ def _normalize_suppressed(value: object) -> bool:
     return bool(value)
 
 
+def _normalize_level_scope(value: object) -> str:
+    normalized = str(value).strip().lower()
+    return normalized if normalized in {"all", "warn", "error"} else ""
+
+
+def _compact_silence_windows(rows: list[dict]) -> dict[tuple[str, str], list[tuple[int, int]]]:
+    by_key: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for row in rows:
+        service = _normalize_service(row.get("service", ""))
+        scope = _normalize_level_scope(row.get("level_scope", ""))
+        if not scope:
+            continue
+        start = _normalize_ts_ms(row.get("start_ms", 0))
+        end = _normalize_ts_ms(row.get("end_ms", 0))
+        if end <= start:
+            continue
+        by_key.setdefault((service, scope), []).append((start, end))
+
+    compacted: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for key, intervals in by_key.items():
+        merged: list[list[int]] = []
+        for start, end in sorted(intervals):
+            if not merged or start > merged[-1][1]:
+                merged.append([start, end])
+            else:
+                merged[-1][1] = max(merged[-1][1], end)
+        compacted[key] = [(start, end) for start, end in merged]
+    return compacted
+
+
+def _is_silenced(event: dict, compacted: dict[tuple[str, str], list[tuple[int, int]]]) -> bool:
+    service = _normalize_service(event.get("service", ""))
+    level = _normalize_level(event.get("level", ""))
+    ts_ms = _normalize_ts_ms(event.get("ts_ms", 0))
+    for scope in ("all", level):
+        for start, end in compacted.get((service, scope), []):
+            if start <= ts_ms < end:
+                return True
+    return False
+
+
+def _silence_compaction_checksum(compacted: dict[tuple[str, str], list[tuple[int, int]]]) -> str:
+    return hashlib.sha256(
+        "\n".join(
+            f"{service}|{scope}|{start}|{end}"
+            for service, scope in sorted(compacted)
+            for start, end in compacted[(service, scope)]
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _canonicalize_events(events: list[dict]) -> list[dict]:
     deduped: dict[str, dict] = {}
     for event in events:
@@ -172,11 +224,15 @@ def _build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     return {service: matrix[service] for service in sorted(matrix)}
 
 
-def _compute_summary(events: list[dict]) -> dict:
+def _compute_summary(events: list[dict], silence_rows: list[dict] | None = None) -> dict:
     canonical = _canonicalize_events(events)
     level_counts = {level: 0 for level in LEVEL_ORDER}
     services: set[str] = set()
-    flagged = _compute_flagged(events)
+    silence_rows = (
+        json.loads(SILENCE_PATH.read_text()) if silence_rows is None else silence_rows
+    )
+    compacted_silence = _compact_silence_windows(silence_rows)
+    flagged = _compute_flagged(events, silence_rows=silence_rows)
     for event in canonical:
         level = str(event.get("level", ""))
         if level in level_counts:
@@ -196,6 +252,13 @@ def _compute_summary(events: list[dict]) -> dict:
             if _normalize_suppressed(event.get("suppressed", False))
             and event["level"] in FLAGGED_LEVELS
         ),
+        "silence_excluded_count": sum(
+            1
+            for event in canonical
+            if event["level"] in FLAGGED_LEVELS
+            and not _normalize_suppressed(event.get("suppressed", False))
+            and _is_silenced(event, compacted_silence)
+        ),
         "canonical_fingerprint": hashlib.sha1(
             "\n".join(
                 f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
@@ -203,13 +266,20 @@ def _compute_summary(events: list[dict]) -> dict:
                 for event in canonical
             ).encode("utf-8")
         ).hexdigest(),
+        "silence_compaction_checksum": _silence_compaction_checksum(compacted_silence),
     }
 
 
-def _compute_flagged(events: list[dict]) -> list[dict]:
+def _compute_flagged(events: list[dict], silence_rows: list[dict] | None = None) -> list[dict]:
+    silence_rows = (
+        json.loads(SILENCE_PATH.read_text()) if silence_rows is None else silence_rows
+    )
+    compacted_silence = _compact_silence_windows(silence_rows)
     rows = []
     for event in _canonicalize_events(events):
         if not _is_flagged(event):
+            continue
+        if _is_silenced(event, compacted_silence):
             continue
         rows.append(
             {
@@ -366,7 +436,9 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "services",
         "flagged_count",
         "suppressed_excluded_count",
+        "silence_excluded_count",
         "canonical_fingerprint",
+        "silence_compaction_checksum",
     ):
         assert verified[key] == expected[key]
     assert list(verified["level_counts"].keys()) == list(LEVEL_ORDER)
@@ -480,7 +552,9 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["raw_event_count"] == alt["raw_event_count"]
     assert summary["flagged_count"] == alt["flagged_count"]
     assert summary["suppressed_excluded_count"] == alt["suppressed_excluded_count"]
+    assert summary["silence_excluded_count"] == alt["silence_excluded_count"]
     assert summary["canonical_fingerprint"] == alt["canonical_fingerprint"]
+    assert summary["silence_compaction_checksum"] == alt["silence_compaction_checksum"]
     assert [row["id"] for row in flagged] == alt["flagged_ids_desc"]
 
 
@@ -767,3 +841,59 @@ def test_pipeline_does_not_reference_test_or_solution_artifacts():
     for token in forbidden:
         assert token not in pipeline_code
         assert token not in cli_code
+
+
+def test_silence_source_path_affects_output(tmp_path_factory):
+    original_silence = SILENCE_PATH.read_text()
+    try:
+        baseline_dir = tmp_path_factory.mktemp("silence_base")
+        baseline = _run_pipeline(output_dir=baseline_dir)
+        assert baseline.returncode == 0, baseline.stderr
+        baseline_summary = json.loads((baseline_dir / "summary.json").read_text())
+        baseline_flagged = _flagged_rows(baseline_dir / "flagged.jsonl")
+
+        SILENCE_PATH.write_text("[]\n")
+        no_silence_dir = tmp_path_factory.mktemp("silence_none")
+        no_silence = _run_pipeline(output_dir=no_silence_dir)
+        assert no_silence.returncode == 0, no_silence.stderr
+        no_silence_summary = json.loads((no_silence_dir / "summary.json").read_text())
+        no_silence_flagged = _flagged_rows(no_silence_dir / "flagged.jsonl")
+
+        assert baseline_summary["silence_excluded_count"] > 0
+        assert no_silence_summary["silence_excluded_count"] == 0
+        assert baseline_summary["silence_compaction_checksum"] != no_silence_summary[
+            "silence_compaction_checksum"
+        ]
+        assert len(no_silence_flagged) > len(baseline_flagged)
+    finally:
+        SILENCE_PATH.write_text(original_silence)
+
+
+def test_silence_compaction_and_level_scope_exercised(tmp_path_factory):
+    original_silence = SILENCE_PATH.read_text()
+    try:
+        silence_rows = [
+            {"service": "api-gw", "level_scope": "warn", "start_ms": 100, "end_ms": 130},
+            {"service": "api gateway", "level_scope": "warn", "start_ms": 130, "end_ms": 180},
+            {"service": "api", "level_scope": "all", "start_ms": 200, "end_ms": 240},
+            {"service": "api", "level_scope": "debug", "start_ms": 0, "end_ms": 999},
+        ]
+        SILENCE_PATH.write_text(json.dumps(silence_rows, indent=2) + "\n")
+        events = [
+            {"id": "q1", "ts_ms": 120, "level": "warn", "service": "api-gw", "message": "warn silenced"},
+            {"id": "q2", "ts_ms": 120, "level": "error", "service": "api gateway", "message": "error kept"},
+            {"id": "q3", "ts_ms": 210, "level": "error", "service": "api", "message": "all silenced"},
+            {"id": "q4", "ts_ms": 260, "level": "warn", "service": "api", "message": "warn kept"},
+        ]
+        input_path = tmp_path_factory.mktemp("silence_scope") / "events.json"
+        input_path.write_text(json.dumps(events))
+        out_dir = tmp_path_factory.mktemp("silence_scope_out")
+        result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+        assert result.returncode == 0, result.stderr
+
+        summary = json.loads((out_dir / "summary.json").read_text())
+        flagged = _flagged_rows(out_dir / "flagged.jsonl")
+        assert summary["silence_excluded_count"] == 2
+        assert [row["id"] for row in flagged] == ["q4", "q2"]
+    finally:
+        SILENCE_PATH.write_text(original_silence)

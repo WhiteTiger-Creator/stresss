@@ -12,6 +12,8 @@ SCHEMA_VERSION = "service-log-report-v2"
 FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
 SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
+SILENCE_WINDOWS_PATH = Path("/app/data/silence_windows.json")
+SUPPORTED_SILENCE_SCOPES = {"all", "warn", "error"}
 SERVICE_ALIASES = {
     "api-gw": "api",
     "api gateway": "api",
@@ -21,6 +23,10 @@ SERVICE_ALIASES = {
 
 
 def load_events(path: Path) -> list[dict]:
+    return json.loads(path.read_text())
+
+
+def load_silence_windows(path: Path = SILENCE_WINDOWS_PATH) -> list[dict]:
     return json.loads(path.read_text())
 
 
@@ -42,6 +48,11 @@ def normalize_ts_ms(value: object) -> int:
 
 def normalize_message(value: object) -> str:
     return " ".join(str(value).split())
+
+
+def normalize_level_scope(value: object) -> str:
+    normalized = str(value).strip().lower()
+    return normalized if normalized in SUPPORTED_SILENCE_SCOPES else ""
 
 
 def normalize_suppressed(value: object) -> bool:
@@ -113,10 +124,58 @@ def build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     return {service: matrix[service] for service in sorted(matrix)}
 
 
-def export_report(events: list[dict], output_dir: Path) -> None:
+def compact_silence_windows(rows: list[dict]) -> dict[tuple[str, str], list[tuple[int, int]]]:
+    by_key: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for row in rows:
+        service = normalize_service(row.get("service", ""))
+        level_scope = normalize_level_scope(row.get("level_scope", ""))
+        if not level_scope:
+            continue
+        start_ms = normalize_ts_ms(row.get("start_ms", 0))
+        end_ms = normalize_ts_ms(row.get("end_ms", 0))
+        if end_ms <= start_ms:
+            continue
+        by_key.setdefault((service, level_scope), []).append((start_ms, end_ms))
+
+    compacted: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for key, intervals in by_key.items():
+        merged: list[list[int]] = []
+        for start_ms, end_ms in sorted(intervals):
+            if not merged or start_ms > merged[-1][1]:
+                merged.append([start_ms, end_ms])
+            else:
+                merged[-1][1] = max(merged[-1][1], end_ms)
+        compacted[key] = [(start_ms, end_ms) for start_ms, end_ms in merged]
+    return compacted
+
+
+def is_silenced(event: dict, compacted_silence: dict[tuple[str, str], list[tuple[int, int]]]) -> bool:
+    service = normalize_service(event.get("service", ""))
+    level = normalize_level(event.get("level", ""))
+    ts_ms = normalize_ts_ms(event.get("ts_ms", 0))
+    for scope in ("all", level):
+        for start_ms, end_ms in compacted_silence.get((service, scope), []):
+            if start_ms <= ts_ms < end_ms:
+                return True
+    return False
+
+
+def silence_compaction_checksum(
+    compacted_silence: dict[tuple[str, str], list[tuple[int, int]]]
+) -> str:
+    lines = [
+        f"{service}|{level_scope}|{start_ms}|{end_ms}"
+        for service, level_scope in sorted(compacted_silence)
+        for start_ms, end_ms in compacted_silence[(service, level_scope)]
+    ]
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     canonical = canonicalize_events(events)
+    compacted_silence = compact_silence_windows(silence_rows)
 
     level_counts = {level: 0 for level in LEVEL_ORDER}
     services: set[str] = set()
@@ -127,8 +186,12 @@ def export_report(events: list[dict], output_dir: Path) -> None:
         services.add(str(event.get("service", "")))
 
     flagged = []
+    silence_excluded_count = 0
     for event in canonical:
         if not is_flagged(event):
+            continue
+        if is_silenced(event, compacted_silence):
+            silence_excluded_count += 1
             continue
         flagged.append(
             {
@@ -165,6 +228,7 @@ def export_report(events: list[dict], output_dir: Path) -> None:
             if normalize_suppressed(event.get("suppressed", False))
             and event["level"] in FLAGGED_LEVELS
         ),
+        "silence_excluded_count": silence_excluded_count,
         "canonical_fingerprint": hashlib.sha1(
             "\n".join(
                 f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
@@ -172,6 +236,7 @@ def export_report(events: list[dict], output_dir: Path) -> None:
                 for event in canonical
             ).encode("utf-8")
         ).hexdigest(),
+        "silence_compaction_checksum": silence_compaction_checksum(compacted_silence),
     }
 
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -190,7 +255,8 @@ def main() -> None:
     args = parser.parse_args()
 
     events = load_events(Path(args.input))
-    export_report(events, Path(args.output_dir))
+    silence_rows = load_silence_windows()
+    export_report(events, Path(args.output_dir), silence_rows)
     print(f"Wrote report to {args.output_dir}")
 
 

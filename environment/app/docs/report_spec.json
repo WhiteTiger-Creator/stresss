@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.4",
+  "version": "3.5",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -106,6 +106,7 @@
     },
     "input_stats": {
       "required_fields": ["event_count", "unique_event_ids", "services"],
+      "exact_key_names": "input_stats keys must be exactly event_count, unique_event_ids, services",
       "services_sort": "ascending alphabetical",
       "services_normalization": "services must use the same canonicalization as canonicalization.service_normalization (strip/lower + aliases); raw unnormalized spellings are invalid",
       "source_events_path": "/app/data/events.json"
@@ -120,13 +121,16 @@
         "services",
         "flagged_count",
         "suppressed_excluded_count",
-        "canonical_fingerprint"
+        "silence_excluded_count",
+        "canonical_fingerprint",
+        "silence_compaction_checksum"
       ]
     },
     "output_paths": {
       "summary_json": "<output-dir>/summary.json",
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
-      "service_matrix_json": "<output-dir>/service_matrix.json"
+      "service_matrix_json": "<output-dir>/service_matrix.json",
+      "key_naming_contract": "keys are semantic snake_case names, not filenames with dots"
     }
   },
   "canonicalization": {
@@ -136,9 +140,12 @@
     "ts_ms_normalization": "coerce ts_ms with int(str(ts_ms).strip()); invalid values become 0",
     "message_normalization": "collapse internal whitespace in message using split/join normalization before tie-breaks and output",
     "suppressed_normalization": "coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false)",
+    "silence_level_scope_normalization": "silence level_scope uses str(...).strip().lower(); supported values are all, warn, error",
+    "silence_window_canonicalization": "silence windows come from /app/data/silence_windows.json; normalize service aliases and level_scope, coerce start_ms/end_ms with int(str(...).strip()), drop rows where end_ms <= start_ms, compact overlap/touch per (service, level_scope)",
+    "silence_match_rule": "an event is silenced when start_ms <= ts_ms < end_ms for same normalized service and level_scope in {all, event.level}",
     "canonical_order": "after dedupe, canonical rows are sorted by ts_ms ascending (stable for ties)",
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
-    "flagged_export": "include warn and error only, exclude suppressed=true, sort by ts_ms descending then severity rank descending then id ascending"
+    "flagged_export": "include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, sort by ts_ms descending then severity rank descending then id ascending"
   },
   "repair_audit": {
     "required_keys": [
@@ -157,6 +164,8 @@
       "normalize_message",
       "dedupe_by_id",
       "normalize_suppressed",
+      "load_silence_windows",
+      "apply_silence_windows",
       "filter_suppressed",
       "build_flagged"
     ],
@@ -204,7 +213,8 @@
     "cli_usage": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "defaults": {
       "input": "/app/data/events.json",
-      "output_dir": "/app/output"
+      "output_dir": "/app/output",
+      "silence_windows": "/app/data/silence_windows.json"
     },
     "forbidden_executable_tokens": [
       "event[\"timestamp\"]",
@@ -217,7 +227,9 @@
       ".split(",
       "reverse=True",
       "SEVERITY_RANK",
-      "SERVICE_ALIASES"
+      "SERVICE_ALIASES",
+      "SILENCE_WINDOWS_PATH",
+      "silence_compaction_checksum"
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
   },
@@ -225,7 +237,9 @@
     "summary_json": {
       "schema_version": "service-log-report-v2",
       "level_counts_key_order": ["debug", "error", "info", "warn"],
-      "canonical_fingerprint": "sha1 over canonical rows in canonical_order joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0"
+      "canonical_fingerprint": "sha1 over canonical rows in canonical_order joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0",
+      "silence_excluded_count": "number of canonical warn/error rows excluded by silence windows (after suppressed exclusion)",
+      "silence_compaction_checksum": "sha256 over compacted silence rows in canonical order (service, level_scope, start_ms, end_ms) as lines service|level_scope|start_ms|end_ms"
     },
     "service_matrix_json": {
       "description": "Per-service level counts from canonical processed events.",
@@ -243,5 +257,9 @@
   "long_context": {
     "dossier_path": "/app/incident/export_dossier.md",
     "minimum_line_count": 500
+  },
+  "silence_windows": {
+    "source_path": "/app/data/silence_windows.json",
+    "row_fields": ["service", "level_scope", "start_ms", "end_ms"]
   }
 }
