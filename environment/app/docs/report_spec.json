@@ -112,6 +112,7 @@
       "source_events_path": "/app/data/events.json"
     },
     "verified_summary": {
+      "completeness_contract": "verified_summary must be a full key-for-key copy of summary.json in repair mode; omissions (for example raw_event_count) are invalid",
       "required_fields": [
         "schema_version",
         "raw_event_count",
@@ -143,7 +144,9 @@
     "message_normalization": "collapse internal whitespace in message using split/join normalization before tie-breaks and output",
     "suppressed_normalization": "coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false)",
     "silence_level_scope_normalization": "silence level_scope uses str(...).strip().lower(); supported values are all, warn, error",
+    "silence_level_scope_filter_rule": "drop silence rows whose normalized level_scope is not one of {all, warn, error} before interval compaction and checksum computation",
     "silence_window_canonicalization": "silence windows come from /app/data/silence_windows.json; normalize service aliases and level_scope, coerce start_ms/end_ms with int(str(...).strip()), drop rows where end_ms <= start_ms, compact overlap/touch per (service, level_scope)",
+    "silence_compaction_merge_rule": "when compacting sorted silence intervals for a key, merge if next.start_ms <= current.end_ms (touching intervals must merge)",
     "silence_match_rule": "an event is silenced when start_ms <= ts_ms < end_ms for same normalized service and level_scope in {all, event.level}",
     "canonical_order": "after dedupe, canonical rows are sorted by ts_ms ascending (stable for ties)",
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
