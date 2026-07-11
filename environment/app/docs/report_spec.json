@@ -135,6 +135,7 @@
       "post_repair"
     ],
     "processing_steps": [
+      "record_pre_repair_sha256",
       "normalize_level",
       "normalize_service",
       "normalize_service_aliases",

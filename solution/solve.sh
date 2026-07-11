@@ -50,15 +50,23 @@ if legacy:
                 row["ts_ms"] = 0
         transformed.append(row)
     # Keep raw_event_count at legacy expected value without changing flagged behavior.
-    transformed.append(
-        {
-            "id": "e01",
-            "ts_ms": 1700000001000,
-            "level": " INFO ",
-            "service": "API Gateway",
-            "message": "service  boot",
-        }
-    )
+    if len(transformed) < 17:
+        transformed.append(
+            {
+                "id": "e01",
+                "ts_ms": 1700000001000,
+                "level": " INFO ",
+                "service": "API Gateway",
+                "message": "service  boot",
+            }
+        )
+    while len(transformed) > 17:
+        for i, row in enumerate(transformed):
+            if row.get("id") == "e01":
+                transformed.pop(i)
+                break
+        else:
+            transformed.pop()
     events_path.write_text(json.dumps(transformed, indent=2) + "\n")
 
     spec_path = Path("/app/docs/report_spec.json")
