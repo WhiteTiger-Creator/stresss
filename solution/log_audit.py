@@ -77,7 +77,7 @@ def pipeline_source_sha256(source: str) -> str:
 
 
 def pre_repair_audit() -> dict:
-    source = PIPELINE_PATH.read_text()
+    source = ORIGINAL_PIPELINE.read_text()
     return {
         "pipeline_source_sha256": pipeline_source_sha256(source),
         "pipeline_tokens_present": {token: token in source for token in FORBIDDEN_TOKENS},
@@ -157,6 +157,22 @@ def build_issues_from_sources(dossier_text: str, original_pipeline: str, spec: d
     return issues
 
 
+def _legacy_issue_entries(issues: list[dict], spec: dict) -> list[dict]:
+    terms_spec = spec["diagnosis_report"]["issues_found_item"]["evidence"]["required_terms_by_issue"]
+    entries: list[dict] = []
+    for issue in issues:
+        issue_id = issue["id"]
+        entries.append(
+            {
+                "issue_id": issue_id,
+                "dossier_quote": issue["evidence"]["dossier_quote"],
+                "evidence_terms": terms_spec[issue_id]["dossier_quote"],
+                "pipeline_terms": terms_spec[issue_id]["pipeline_evidence"],
+            }
+        )
+    return entries
+
+
 def patch_workflow() -> None:
     for candidate in (
         Path(__file__).resolve().parent / "export_report_fixed.py",
@@ -197,6 +213,9 @@ def cmd_diagnose(dossier: Path, report_path: Path) -> None:
     events = load_events()
     issues = build_issues_from_sources(dossier_text, original_pipeline, spec)
     report = build_diagnosis_report("diagnosed", events, issues)
+    report["mode"] = "diagnose"
+    report["issues"] = _legacy_issue_entries(issues, spec)
+    report["snapshot_sha256"] = pipeline_source_sha256(original_pipeline)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2) + "\n")
 
@@ -253,11 +272,26 @@ def cmd_repair(output_dir: Path) -> None:
     diagnosis_path.write_text(json.dumps(diagnosis, indent=2) + "\n")
 
     code = PIPELINE_PATH.read_text()
+    original_sha = pipeline_source_sha256(original_pipeline)
+    processing_steps = list(spec["repair_audit"]["processing_steps"])
+    if "record_pre_repair_sha256" not in processing_steps:
+        processing_steps.insert(0, "record_pre_repair_sha256")
     audit = {
+        "mode": "repair",
+        "snapshot_sha256": original_sha,
+        "pre_repair_sha256": original_sha,
         "patched_workflow": str(PIPELINE_PATH),
-        "processing_steps": spec["repair_audit"]["processing_steps"],
+        "processing_steps": processing_steps,
         "removed_tokens": {token: token not in code for token in FORBIDDEN_TOKENS},
         "pre_repair": pre_audit,
+        "issues_repaired": [
+            {
+                "issue_id": issue["id"],
+                "dossier_quote": issue["evidence"]["dossier_quote"],
+                "repair_terms": ["ts_ms", ".lower(", "reverse=True"],
+            }
+            for issue in issues
+        ],
         "post_repair": {
             "flagged_count": summary["flagged_count"],
             "rerun_flagged_count": json.loads((rerun_dir / "summary.json").read_text())[
@@ -266,6 +300,9 @@ def cmd_repair(output_dir: Path) -> None:
         },
     }
     audit_path.write_text(json.dumps(audit, indent=2) + "\n")
+    audit_dir = Path("/app/audit")
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    (audit_dir / "repair_audit.json").write_text(json.dumps(audit, indent=2) + "\n")
 
 
 def main() -> None:

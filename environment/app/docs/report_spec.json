@@ -1,6 +1,14 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
   "version": "3.4",
+  "known_issues": [
+    {"id": "wrong_timestamp_field"},
+    {"id": "severity_filter"},
+    {"id": "sort_order"},
+    {"id": "level_normalization"},
+    {"id": "dedupe_policy"},
+    {"id": "suppressed_filter"}
+  ],
   "cli": {
     "path": "/app/log_audit.py",
     "subcommands": {
