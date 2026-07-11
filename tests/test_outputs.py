@@ -24,6 +24,7 @@ ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
 DOSSIER_PATH = Path("/app/incident/export_dossier.md")
 INPUT_PATH = Path("/app/data/events.json")
 SILENCE_PATH = Path("/app/data/silence_windows.json")
+DEPENDENCY_PATH = Path("/app/data/service_dependencies.json")
 REPORT_SPEC_PATH = Path("/app/docs/report_spec.json")
 FIXTURES = Path("/tests/fixtures/expected_summary.json")
 SPEC_DATA = json.loads(REPORT_SPEC_PATH.read_text())
@@ -167,6 +168,40 @@ def _silence_compaction_checksum(compacted: dict[tuple[str, str], list[tuple[int
     ).hexdigest()
 
 
+def _canonicalize_dependency_rules(rows: list[dict]) -> list[dict]:
+    deduped: dict[tuple[str, str, int, int], int] = {}
+    for row in rows:
+        upstream = _normalize_service(row.get("upstream_service", ""))
+        downstream = _normalize_service(row.get("downstream_service", ""))
+        lag_min = _normalize_ts_ms(row.get("lag_min_ms", 0))
+        lag_max = _normalize_ts_ms(row.get("lag_max_ms", 0))
+        weight = _normalize_ts_ms(row.get("weight", 0))
+        if not upstream or not downstream or lag_min < 0 or lag_max <= lag_min or weight <= 0:
+            continue
+        key = (upstream, downstream, lag_min, lag_max)
+        deduped[key] = max(deduped.get(key, 0), weight)
+    return [
+        {
+            "upstream_service": upstream,
+            "downstream_service": downstream,
+            "lag_min_ms": lag_min,
+            "lag_max_ms": lag_max,
+            "weight": deduped[(upstream, downstream, lag_min, lag_max)],
+        }
+        for upstream, downstream, lag_min, lag_max in sorted(deduped)
+    ]
+
+
+def _dependency_compaction_checksum(rules: list[dict]) -> str:
+    return hashlib.sha256(
+        "\n".join(
+            f"{row['upstream_service']}|{row['downstream_service']}|"
+            f"{row['lag_min_ms']}|{row['lag_max_ms']}|{row['weight']}"
+            for row in rules
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _probe_overlap_ms(anchor_ms: int, spans: list[tuple[int, int]], lookback_ms: int = 90) -> int:
     probe_start = anchor_ms - lookback_ms
     probe_end = anchor_ms + 1
@@ -247,7 +282,11 @@ def _build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     return {service: matrix[service] for service in sorted(matrix)}
 
 
-def _compute_summary(events: list[dict], silence_rows: list[dict] | None = None) -> dict:
+def _compute_summary(
+    events: list[dict],
+    silence_rows: list[dict] | None = None,
+    dependency_rows: list[dict] | None = None,
+) -> dict:
     canonical = _canonicalize_events(events)
     level_counts = {level: 0 for level in LEVEL_ORDER}
     services: set[str] = set()
@@ -255,7 +294,13 @@ def _compute_summary(events: list[dict], silence_rows: list[dict] | None = None)
         json.loads(SILENCE_PATH.read_text()) if silence_rows is None else silence_rows
     )
     compacted_silence = _compact_silence_windows(silence_rows)
-    flagged = _compute_flagged(events, silence_rows=silence_rows)
+    dependency_rows = (
+        json.loads(DEPENDENCY_PATH.read_text()) if dependency_rows is None else dependency_rows
+    )
+    dependency_rules = _canonicalize_dependency_rules(dependency_rows)
+    flagged = _compute_flagged(
+        events, silence_rows=silence_rows, dependency_rows=dependency_rows
+    )
     for event in canonical:
         level = str(event.get("level", ""))
         if level in level_counts:
@@ -290,8 +335,13 @@ def _compute_summary(events: list[dict], silence_rows: list[dict] | None = None)
             ).encode("utf-8")
         ).hexdigest(),
         "silence_compaction_checksum": _silence_compaction_checksum(compacted_silence),
+        "dependency_compaction_checksum": _dependency_compaction_checksum(dependency_rules),
         "max_silence_pressure_score": max(
             (row["silence_pressure_score"] for row in flagged),
+            default=0,
+        ),
+        "max_dependency_pressure_score": max(
+            (row["dependency_pressure_score"] for row in flagged),
             default=0,
         ),
         "flagged_digest_checksum": hashlib.sha256(
@@ -300,11 +350,19 @@ def _compute_summary(events: list[dict], silence_rows: list[dict] | None = None)
     }
 
 
-def _compute_flagged(events: list[dict], silence_rows: list[dict] | None = None) -> list[dict]:
+def _compute_flagged(
+    events: list[dict],
+    silence_rows: list[dict] | None = None,
+    dependency_rows: list[dict] | None = None,
+) -> list[dict]:
     silence_rows = (
         json.loads(SILENCE_PATH.read_text()) if silence_rows is None else silence_rows
     )
     compacted_silence = _compact_silence_windows(silence_rows)
+    dependency_rows = (
+        json.loads(DEPENDENCY_PATH.read_text()) if dependency_rows is None else dependency_rows
+    )
+    dependency_rules = _canonicalize_dependency_rules(dependency_rows)
     rows = []
     for event in _canonicalize_events(events):
         if not _is_flagged(event):
@@ -312,12 +370,6 @@ def _compute_flagged(events: list[dict], silence_rows: list[dict] | None = None)
         if _is_silenced(event, compacted_silence):
             continue
         pressure_score = _silence_pressure_score(event, compacted_silence)
-        event_digest = hashlib.sha1(
-            (
-                f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
-                f"{event['message']}|{pressure_score}"
-            ).encode("utf-8")
-        ).hexdigest()[:10]
         rows.append(
             {
                 "id": event["id"],
@@ -326,11 +378,39 @@ def _compute_flagged(events: list[dict], silence_rows: list[dict] | None = None)
                 "service": event["service"],
                 "message": event["message"],
                 "silence_pressure_score": pressure_score,
-                "event_digest": event_digest,
             }
         )
+    chronological = sorted(rows, key=lambda row: (row["ts_ms"], str(row["id"])))
+    for target_index, target in enumerate(chronological):
+        candidates: list[tuple[int, int, str]] = []
+        for source in chronological[:target_index]:
+            if source["ts_ms"] >= target["ts_ms"]:
+                continue
+            lag = target["ts_ms"] - source["ts_ms"]
+            contributions = [
+                rule["weight"] * SEVERITY_RANK.get(source["level"], 0)
+                + source["silence_pressure_score"]
+                + (source["dependency_pressure_score"] // 2)
+                for rule in dependency_rules
+                if rule["upstream_service"] == source["service"]
+                and rule["downstream_service"] == target["service"]
+                and rule["lag_min_ms"] <= lag < rule["lag_max_ms"]
+            ]
+            if contributions:
+                candidates.append((max(contributions), source["ts_ms"], str(source["id"])))
+        strongest = sorted(candidates, key=lambda item: (-item[0], -item[1], item[2]))[:3]
+        target["dependency_pressure_score"] = sum(item[0] for item in strongest)
+        target["dependency_source_ids"] = [item[2] for item in strongest]
+        target["event_digest"] = hashlib.sha1(
+            (
+                f"{target['id']}|{target['ts_ms']}|{target['level']}|{target['service']}|"
+                f"{target['message']}|{target['silence_pressure_score']}|"
+                f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}"
+            ).encode("utf-8")
+        ).hexdigest()[:10]
     rows.sort(key=lambda row: row["id"])
     rows.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
+    rows.sort(key=lambda row: row["dependency_pressure_score"], reverse=True)
     rows.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     rows.sort(key=lambda row: row["ts_ms"], reverse=True)
     return rows
@@ -479,7 +559,9 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "silence_excluded_count",
         "canonical_fingerprint",
         "silence_compaction_checksum",
+        "dependency_compaction_checksum",
         "max_silence_pressure_score",
+        "max_dependency_pressure_score",
         "flagged_digest_checksum",
     ):
         assert verified[key] == expected[key]
@@ -511,6 +593,8 @@ def test_flagged_levels(flagged_rows: list[dict]):
     for row in flagged_rows:
         assert row["level"] in FLAGGED_LEVELS
         assert isinstance(row["silence_pressure_score"], int)
+        assert isinstance(row["dependency_pressure_score"], int)
+        assert isinstance(row["dependency_source_ids"], list)
         assert len(row["event_digest"]) == 10
 
 
@@ -600,7 +684,9 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["silence_excluded_count"] == alt["silence_excluded_count"]
     assert summary["canonical_fingerprint"] == alt["canonical_fingerprint"]
     assert summary["silence_compaction_checksum"] == alt["silence_compaction_checksum"]
+    assert summary["dependency_compaction_checksum"] == alt["dependency_compaction_checksum"]
     assert summary["max_silence_pressure_score"] == alt["max_silence_pressure_score"]
+    assert summary["max_dependency_pressure_score"] == alt["max_dependency_pressure_score"]
     assert summary["flagged_digest_checksum"] == alt["flagged_digest_checksum"]
     assert [row["id"] for row in flagged] == alt["flagged_ids_desc"]
 
@@ -971,3 +1057,128 @@ def test_silence_compaction_and_level_scope_exercised(tmp_path_factory):
         assert [row["id"] for row in flagged] == ["q4", "q2"]
     finally:
         SILENCE_PATH.write_text(original_silence)
+
+
+def test_dependency_source_path_affects_output(tmp_path_factory):
+    original_dependencies = DEPENDENCY_PATH.read_text()
+    try:
+        baseline_dir = tmp_path_factory.mktemp("dependency_base")
+        baseline = _run_pipeline(output_dir=baseline_dir)
+        assert baseline.returncode == 0, baseline.stderr
+        baseline_summary = json.loads((baseline_dir / "summary.json").read_text())
+        baseline_flagged = _flagged_rows(baseline_dir / "flagged.jsonl")
+
+        DEPENDENCY_PATH.write_text("[]\n")
+        empty_dir = tmp_path_factory.mktemp("dependency_empty")
+        empty = _run_pipeline(output_dir=empty_dir)
+        assert empty.returncode == 0, empty.stderr
+        empty_summary = json.loads((empty_dir / "summary.json").read_text())
+        empty_flagged = _flagged_rows(empty_dir / "flagged.jsonl")
+
+        assert baseline_summary["max_dependency_pressure_score"] > 0
+        assert empty_summary["max_dependency_pressure_score"] == 0
+        assert baseline_summary["dependency_compaction_checksum"] != empty_summary[
+            "dependency_compaction_checksum"
+        ]
+        assert [row["id"] for row in baseline_flagged] == [row["id"] for row in empty_flagged]
+        assert baseline_summary["flagged_digest_checksum"] != empty_summary[
+            "flagged_digest_checksum"
+        ]
+    finally:
+        DEPENDENCY_PATH.write_text(original_dependencies)
+
+
+def test_dependency_dedupe_lag_boundaries_and_top_three_sources(tmp_path_factory):
+    original_dependencies = DEPENDENCY_PATH.read_text()
+    try:
+        rules = [
+            {
+                "upstream_service": "api-gw",
+                "downstream_service": "worker",
+                "lag_min_ms": 50,
+                "lag_max_ms": 200,
+                "weight": 2,
+            },
+            {
+                "upstream_service": "api gateway",
+                "downstream_service": "worker-batch",
+                "lag_min_ms": "50",
+                "lag_max_ms": "200",
+                "weight": 4,
+            },
+            {
+                "upstream_service": "database",
+                "downstream_service": "worker",
+                "lag_min_ms": 50,
+                "lag_max_ms": 100,
+                "weight": 3,
+            },
+            {
+                "upstream_service": "api",
+                "downstream_service": "worker",
+                "lag_min_ms": -1,
+                "lag_max_ms": 500,
+                "weight": 99,
+            },
+        ]
+        DEPENDENCY_PATH.write_text(json.dumps(rules, indent=2) + "\n")
+        events = [
+            {"id": "s1", "ts_ms": 100, "level": "error", "service": "api", "message": "first"},
+            {"id": "s2", "ts_ms": 110, "level": "warn", "service": "api-gw", "message": "second"},
+            {"id": "s3", "ts_ms": 120, "level": "error", "service": "db", "message": "third"},
+            {"id": "s4", "ts_ms": 200, "level": "error", "service": "worker", "message": "target"},
+        ]
+        input_path = tmp_path_factory.mktemp("dependency_rules") / "events.json"
+        input_path.write_text(json.dumps(events))
+        out_dir = tmp_path_factory.mktemp("dependency_rules_out")
+        result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+        assert result.returncode == 0, result.stderr
+
+        flagged = _flagged_rows(out_dir / "flagged.jsonl")
+        target = next(row for row in flagged if row["id"] == "s4")
+        assert target["dependency_source_ids"] == ["s1", "s3", "s2"]
+        assert target["dependency_pressure_score"] == 40
+        assert json.loads((out_dir / "summary.json").read_text()) == _compute_summary(
+            events, dependency_rows=rules
+        )
+    finally:
+        DEPENDENCY_PATH.write_text(original_dependencies)
+
+
+def test_flagged_sort_tie_break_on_dependency_pressure(tmp_path_factory):
+    original_dependencies = DEPENDENCY_PATH.read_text()
+    try:
+        rules = [
+            {
+                "upstream_service": "api",
+                "downstream_service": "worker",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 4,
+            },
+            {
+                "upstream_service": "api",
+                "downstream_service": "db",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 1,
+            },
+        ]
+        DEPENDENCY_PATH.write_text(json.dumps(rules) + "\n")
+        events = [
+            {"id": "source", "ts_ms": 100, "level": "error", "service": "api", "message": "source"},
+            {"id": "lower", "ts_ms": 200, "level": "error", "service": "db", "message": "lower"},
+            {"id": "higher", "ts_ms": 200, "level": "error", "service": "worker", "message": "higher"},
+        ]
+        input_path = tmp_path_factory.mktemp("dependency_sort") / "events.json"
+        input_path.write_text(json.dumps(events))
+        out_dir = tmp_path_factory.mktemp("dependency_sort_out")
+        result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+        assert result.returncode == 0, result.stderr
+        flagged = _flagged_rows(out_dir / "flagged.jsonl")
+        assert [row["id"] for row in flagged[:2]] == ["higher", "lower"]
+        assert flagged[0]["dependency_pressure_score"] > flagged[1][
+            "dependency_pressure_score"
+        ]
+    finally:
+        DEPENDENCY_PATH.write_text(original_dependencies)

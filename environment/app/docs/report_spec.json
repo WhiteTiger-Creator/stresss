@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "version": "3.6",
+  "contract_version": "3.7",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -125,7 +125,9 @@
         "silence_excluded_count",
         "canonical_fingerprint",
         "silence_compaction_checksum",
+        "dependency_compaction_checksum",
         "max_silence_pressure_score",
+        "max_dependency_pressure_score",
         "flagged_digest_checksum"
       ]
     },
@@ -175,6 +177,8 @@
       "load_silence_windows",
       "apply_silence_windows",
       "compute_silence_pressure",
+      "load_service_dependencies",
+      "compute_dependency_pressure",
       "build_event_digest",
       "filter_suppressed",
       "build_flagged"
@@ -239,8 +243,11 @@
       "SEVERITY_RANK",
       "SERVICE_ALIASES",
       "SILENCE_WINDOWS_PATH",
+      "DEPENDENCY_RULES_PATH",
       "silence_compaction_checksum",
+      "dependency_compaction_checksum",
       "silence_pressure_score",
+      "dependency_pressure_score",
       "event_digest"
     ],
     "token_check_scope": "executable code only (exclude comments and docstrings)"
@@ -252,7 +259,9 @@
       "canonical_fingerprint": "sha1 over canonical rows in canonical_order joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0",
       "silence_excluded_count": "number of canonical warn/error rows excluded by silence windows (after suppressed exclusion)",
       "silence_compaction_checksum": "sha256 over compacted silence rows in canonical order (service, level_scope, start_ms, end_ms) as lines service|level_scope|start_ms|end_ms",
+      "dependency_compaction_checksum": "sha256 over canonical dependency rules in order (upstream_service, downstream_service, lag_min_ms, lag_max_ms), as newline-joined upstream_service|downstream_service|lag_min_ms|lag_max_ms|weight",
       "max_silence_pressure_score": "maximum silence_pressure_score across final flagged rows (0 when there are no flagged rows)",
+      "max_dependency_pressure_score": "maximum dependency_pressure_score across final flagged rows (0 when there are no flagged rows)",
       "flagged_digest_checksum": "sha256('|'.join(event_digest values in final flagged order)) lowercase 64 hex chars"
     },
     "service_matrix_json": {
@@ -268,9 +277,11 @@
         "service",
         "message",
         "silence_pressure_score",
+        "dependency_pressure_score",
+        "dependency_source_ids",
         "event_digest"
       ],
-      "sort": "ts_ms descending with tiebreaks severity rank desc, silence_pressure_score desc, id asc",
+      "sort": "ts_ms descending with tiebreaks severity rank desc, dependency_pressure_score desc, silence_pressure_score desc, id asc",
       "levels_included": ["warn", "error"],
       "exclude_suppressed": true,
       "json_format": "compact (no space after colon)"
@@ -283,5 +294,17 @@
   "silence_windows": {
     "source_path": "/app/data/silence_windows.json",
     "row_fields": ["service", "level_scope", "start_ms", "end_ms"]
+  },
+  "service_dependencies": {
+    "source_path": "/app/data/service_dependencies.json",
+    "row_fields": ["upstream_service", "downstream_service", "lag_min_ms", "lag_max_ms", "weight"],
+    "canonicalization": "normalize both services with canonical service aliases; int-coerce lag and weight fields; drop empty services, lag_min_ms < 0, lag_max_ms <= lag_min_ms, or weight <= 0; dedupe identical (upstream_service, downstream_service, lag_min_ms, lag_max_ms) rules by maximum weight",
+    "candidate_events": "dependency sources and targets are final unsuppressed, unsilenced warn/error rows; a source is eligible only when source.ts_ms < target.ts_ms",
+    "rule_match": "a canonical rule matches when source.service=upstream_service, target.service=downstream_service, and lag_min_ms <= target.ts_ms-source.ts_ms < lag_max_ms",
+    "source_contribution": "process targets in (ts_ms ascending, id ascending) order; for one source event, use only the maximum across matching rules of weight*severity_rank(source.level)+source.silence_pressure_score+(source.dependency_pressure_score//2), so pressure propagates through earlier causal rows",
+    "strongest_source_selection": "sort contributing sources by contribution descending, source ts_ms descending, source id ascending; retain the first three",
+    "dependency_pressure_score": "sum retained source contributions",
+    "dependency_source_ids": "retained source ids in strongest_source_selection order",
+    "event_digest": "first 10 lowercase SHA1 hex chars of id|ts_ms|level|service|message|silence_pressure_score|dependency_pressure_score|comma_joined_dependency_source_ids"
   }
 }

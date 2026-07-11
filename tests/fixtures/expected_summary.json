@@ -19,8 +19,10 @@
   "silence_excluded_count": 4,
   "canonical_fingerprint": "c2cccc075c50e66f27fa3726a9ed9cafa4335e9a",
   "silence_compaction_checksum": "44005a978bedd93d1a55e22d0d37319c1fde585855ac7ee6274230f425af621f",
+  "dependency_compaction_checksum": "0d5daf81fb88aa0fa938fc5f66304f3995ba84bd0895903288611700b797989f",
   "max_silence_pressure_score": 0,
-  "flagged_digest_checksum": "8e87bba01e952fbe30d9a795ef13eab4684ea81ebd44ae47e3d6e2b3e73b8569",
+  "max_dependency_pressure_score": 26,
+  "flagged_digest_checksum": "990707a58ccb138c9edc43c2e9b817947734b1d3c8f8e6629293e6dbb773ef98",
   "event_count": 19,
   "unique_ids": 16,
   "expected_flagged_ids_desc": [
@@ -87,8 +89,10 @@
     ],
     "canonical_fingerprint": "c57d7f588eda8ac08635f1507ae8a7d5719d60f2",
     "silence_compaction_checksum": "44005a978bedd93d1a55e22d0d37319c1fde585855ac7ee6274230f425af621f",
+    "dependency_compaction_checksum": "0d5daf81fb88aa0fa938fc5f66304f3995ba84bd0895903288611700b797989f",
     "max_silence_pressure_score": 0,
-    "flagged_digest_checksum": "85eabde034a296294ed8bc7e6c507e15fddc65dc0aa028a87c7f7b55611c06d1",
+    "max_dependency_pressure_score": 0,
+    "flagged_digest_checksum": "3deadac00db62590835afaf64f6e60a720f8079d1efb71019167e3c738c695b1",
     "flagged_ids_desc": [
       "a4",
       "a2"

@@ -13,6 +13,7 @@ FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
 SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
 SILENCE_WINDOWS_PATH = Path("/app/data/silence_windows.json")
+DEPENDENCY_RULES_PATH = Path("/app/data/service_dependencies.json")
 SUPPORTED_SILENCE_SCOPES = {"all", "warn", "error"}
 SERVICE_ALIASES = {
     "api-gw": "api",
@@ -27,6 +28,10 @@ def load_events(path: Path) -> list[dict]:
 
 
 def load_silence_windows(path: Path = SILENCE_WINDOWS_PATH) -> list[dict]:
+    return json.loads(path.read_text())
+
+
+def load_dependency_rules(path: Path = DEPENDENCY_RULES_PATH) -> list[dict]:
     return json.loads(path.read_text())
 
 
@@ -171,6 +176,39 @@ def silence_compaction_checksum(
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
+def canonicalize_dependency_rules(rows: list[dict]) -> list[dict]:
+    deduped: dict[tuple[str, str, int, int], int] = {}
+    for row in rows:
+        upstream = normalize_service(row.get("upstream_service", ""))
+        downstream = normalize_service(row.get("downstream_service", ""))
+        lag_min_ms = normalize_ts_ms(row.get("lag_min_ms", 0))
+        lag_max_ms = normalize_ts_ms(row.get("lag_max_ms", 0))
+        weight = normalize_ts_ms(row.get("weight", 0))
+        if not upstream or not downstream or lag_min_ms < 0 or lag_max_ms <= lag_min_ms or weight <= 0:
+            continue
+        key = (upstream, downstream, lag_min_ms, lag_max_ms)
+        deduped[key] = max(deduped.get(key, 0), weight)
+    return [
+        {
+            "upstream_service": upstream,
+            "downstream_service": downstream,
+            "lag_min_ms": lag_min_ms,
+            "lag_max_ms": lag_max_ms,
+            "weight": deduped[(upstream, downstream, lag_min_ms, lag_max_ms)],
+        }
+        for upstream, downstream, lag_min_ms, lag_max_ms in sorted(deduped)
+    ]
+
+
+def dependency_compaction_checksum(rules: list[dict]) -> str:
+    lines = [
+        f"{row['upstream_service']}|{row['downstream_service']}|"
+        f"{row['lag_min_ms']}|{row['lag_max_ms']}|{row['weight']}"
+        for row in rules
+    ]
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
 def probe_overlap_ms(anchor_ms: int, spans: list[tuple[int, int]], lookback_ms: int = 90) -> int:
     probe_start = anchor_ms - lookback_ms
     probe_end = anchor_ms + 1
@@ -194,11 +232,17 @@ def silence_pressure_score(
     return (all_overlap_ms // 25) + (level_overlap_ms // 15)
 
 
-def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]) -> None:
+def export_report(
+    events: list[dict],
+    output_dir: Path,
+    silence_rows: list[dict],
+    dependency_rows: list[dict],
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     canonical = canonicalize_events(events)
     compacted_silence = compact_silence_windows(silence_rows)
+    dependency_rules = canonicalize_dependency_rules(dependency_rows)
 
     level_counts = {level: 0 for level in LEVEL_ORDER}
     services: set[str] = set()
@@ -217,12 +261,6 @@ def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]
             silence_excluded_count += 1
             continue
         pressure_score = silence_pressure_score(event, compacted_silence)
-        event_digest = hashlib.sha1(
-            (
-                f"{event['id']}|{event['ts_ms']}|{event['level']}|{event['service']}|"
-                f"{event['message']}|{pressure_score}"
-            ).encode("utf-8")
-        ).hexdigest()[:10]
         flagged.append(
             {
                 "id": event["id"],
@@ -231,11 +269,39 @@ def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]
                 "service": event["service"],
                 "message": event["message"],
                 "silence_pressure_score": pressure_score,
-                "event_digest": event_digest,
             }
         )
+    chronological = sorted(flagged, key=lambda row: (row["ts_ms"], str(row["id"])))
+    for target_index, target in enumerate(chronological):
+        candidates: list[tuple[int, int, str]] = []
+        for source in chronological[:target_index]:
+            if source["ts_ms"] >= target["ts_ms"]:
+                continue
+            lag_ms = target["ts_ms"] - source["ts_ms"]
+            contributions = [
+                row["weight"] * SEVERITY_RANK.get(source["level"], 0)
+                + source["silence_pressure_score"]
+                + (source["dependency_pressure_score"] // 2)
+                for row in dependency_rules
+                if row["upstream_service"] == source["service"]
+                and row["downstream_service"] == target["service"]
+                and row["lag_min_ms"] <= lag_ms < row["lag_max_ms"]
+            ]
+            if contributions:
+                candidates.append((max(contributions), source["ts_ms"], str(source["id"])))
+        strongest = sorted(candidates, key=lambda item: (-item[0], -item[1], item[2]))[:3]
+        target["dependency_pressure_score"] = sum(item[0] for item in strongest)
+        target["dependency_source_ids"] = [item[2] for item in strongest]
+        target["event_digest"] = hashlib.sha1(
+            (
+                f"{target['id']}|{target['ts_ms']}|{target['level']}|{target['service']}|"
+                f"{target['message']}|{target['silence_pressure_score']}|"
+                f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}"
+            ).encode("utf-8")
+        ).hexdigest()[:10]
     flagged.sort(key=lambda row: row["id"])
     flagged.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
+    flagged.sort(key=lambda row: row["dependency_pressure_score"], reverse=True)
     flagged.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     flagged.sort(key=lambda row: row["ts_ms"], reverse=True)
 
@@ -262,8 +328,13 @@ def export_report(events: list[dict], output_dir: Path, silence_rows: list[dict]
             ).encode("utf-8")
         ).hexdigest(),
         "silence_compaction_checksum": silence_compaction_checksum(compacted_silence),
+        "dependency_compaction_checksum": dependency_compaction_checksum(dependency_rules),
         "max_silence_pressure_score": max(
             (row["silence_pressure_score"] for row in flagged),
+            default=0,
+        ),
+        "max_dependency_pressure_score": max(
+            (row["dependency_pressure_score"] for row in flagged),
             default=0,
         ),
         "flagged_digest_checksum": hashlib.sha256(
@@ -288,7 +359,8 @@ def main() -> None:
 
     events = load_events(Path(args.input))
     silence_rows = load_silence_windows()
-    export_report(events, Path(args.output_dir), silence_rows)
+    dependency_rows = load_dependency_rules()
+    export_report(events, Path(args.output_dir), silence_rows, dependency_rows)
     print(f"Wrote report to {args.output_dir}")
 
 

@@ -1,0 +1,11 @@
+[
+  {"upstream_service": "api gateway", "downstream_service": "api-gw", "lag_min_ms": 100, "lag_max_ms": 1500, "weight": 2},
+  {"upstream_service": "api", "downstream_service": "worker-batch", "lag_min_ms": 500, "lag_max_ms": 2500, "weight": 3},
+  {"upstream_service": "api-gw", "downstream_service": "worker", "lag_min_ms": 500, "lag_max_ms": 2500, "weight": 1},
+  {"upstream_service": "worker", "downstream_service": "database", "lag_min_ms": 1000, "lag_max_ms": 4000, "weight": 2},
+  {"upstream_service": "database", "downstream_service": "worker", "lag_min_ms": 500, "lag_max_ms": 2500, "weight": 4},
+  {"upstream_service": "api", "downstream_service": "worker", "lag_min_ms": 500, "lag_max_ms": 2500, "weight": "3"},
+  {"upstream_service": "search", "downstream_service": "api", "lag_min_ms": -1, "lag_max_ms": 100, "weight": 5},
+  {"upstream_service": "db", "downstream_service": "api", "lag_min_ms": 100, "lag_max_ms": 100, "weight": 2},
+  {"upstream_service": "worker", "downstream_service": "api", "lag_min_ms": 100, "lag_max_ms": 500, "weight": 0}
+]
