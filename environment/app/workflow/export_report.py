@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 SCHEMA_VERSION = "service-log-report-v2"
@@ -62,8 +61,8 @@ def export_report(events: list[dict], output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default=os.environ.get("EVENTS_PATH", "/app/data/events.json"))
-    parser.add_argument("--output-dir", default=os.environ.get("OUTPUT_DIR", "/app/output"))
+    parser.add_argument("--input", default="/app/data/events.json")
+    parser.add_argument("--output-dir", default="/app/output")
     args = parser.parse_args()
 
     events = load_events(Path(args.input))

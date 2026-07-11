@@ -87,17 +87,7 @@ if legacy:
 PY
 
 # Ensure frozen snapshot exists from the broken workflow before repair.
-# If workflow is already patched (during local reruns), preserve existing snapshot.
 if [ ! -f /app/workflow/.export_report.original ]; then
-  cp /app/workflow/export_report.py /app/workflow/.export_report.original
-  chmod a-w /app/workflow/.export_report.original
-elif python3 - <<'PY'
-from pathlib import Path
-text = Path("/app/workflow/export_report.py").read_text()
-raise SystemExit(0 if 'event["timestamp"]' in text else 1)
-PY
-then
-  chmod u+w /app/workflow/.export_report.original
   cp /app/workflow/export_report.py /app/workflow/.export_report.original
   chmod a-w /app/workflow/.export_report.original
 fi

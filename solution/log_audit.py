@@ -16,6 +16,12 @@ PIPELINE_PATH = Path("/app/workflow/export_report.py")
 ORIGINAL_PIPELINE = Path("/app/workflow/.export_report.original")
 SPEC_PATH = Path("/app/docs/report_spec.json")
 FORBIDDEN_TOKENS = ('event["timestamp"]', 'level == "error"')
+SERVICE_ALIASES = {
+    "api-gw": "api",
+    "api gateway": "api",
+    "database": "db",
+    "worker-batch": "worker",
+}
 
 ISSUE_META = {
     "wrong_timestamp_field": {
@@ -63,8 +69,13 @@ def load_events(path: Path = EVENTS_PATH) -> list[dict]:
     return json.loads(path.read_text())
 
 
+def _normalize_service(value: object) -> str:
+    normalized = str(value).strip().lower()
+    return SERVICE_ALIASES.get(normalized, normalized)
+
+
 def input_stats(events: list[dict]) -> dict:
-    services = sorted({str(event.get("service", "")) for event in events})
+    services = sorted({_normalize_service(event.get("service", "")) for event in events})
     return {
         "event_count": len(events),
         "unique_event_ids": len({str(event["id"]) for event in events}),

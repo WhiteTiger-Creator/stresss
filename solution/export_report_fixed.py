@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 
 SCHEMA_VERSION = "service-log-report-v2"
@@ -114,89 +113,8 @@ def build_service_matrix(events: list[dict]) -> dict[str, dict[str, int]]:
     return {service: matrix[service] for service in sorted(matrix)}
 
 
-def _legacy_verifier_mode() -> bool:
-    fixture = Path("/tests/fixtures/expected_summary.json")
-    try:
-        data = json.loads(fixture.read_text())
-    except Exception:
-        return False
-    return isinstance(data, dict) and "version" in data and "schema_version" not in data
-
-
-def _legacy_flagged(events: list[dict]) -> list[dict]:
-    def _legacy_ts_key(value: object) -> int:
-        try:
-            return int(str(value).strip())
-        except (TypeError, ValueError):
-            return 0
-
-    eligible: list[dict] = []
-    for event in events:
-        if event.get("suppressed", False):
-            continue
-        level = str(event.get("level", "")).lower()
-        if level not in {"error", "warn"}:
-            continue
-        eligible.append(
-            {
-                "id": event["id"],
-                "ts_ms": event.get("ts_ms"),
-                "level": level,
-                "service": event.get("service", ""),
-                "msg": event.get("msg", ""),
-            }
-        )
-    by_id: dict[str, dict] = {}
-    for row in eligible:
-        current = by_id.get(row["id"])
-        if current is None or _legacy_ts_key(row["ts_ms"]) > _legacy_ts_key(current["ts_ms"]):
-            by_id[row["id"]] = row
-    rows = list(by_id.values())
-    rows.sort(key=lambda row: _legacy_ts_key(row["ts_ms"]), reverse=True)
-    return rows
-
-
-def _legacy_summary(events: list[dict], flagged: list[dict]) -> dict:
-    level_counts: dict[str, int] = {}
-    for row in flagged:
-        level = row["level"]
-        level_counts[level] = level_counts.get(level, 0) + 1
-    return {
-        "version": 2,
-        "raw_event_count": len(events),
-        "unique_event_ids": len({event["id"] for event in events}),
-        "suppressed_excluded_count": sum(1 for event in events if event.get("suppressed", False)),
-        "flagged_count": len(flagged),
-        "level_counts": {level: level_counts[level] for level in sorted(level_counts)},
-    }
-
-
-def _legacy_service_matrix(flagged: list[dict]) -> dict[str, dict[str, int]]:
-    matrix: dict[str, dict[str, int]] = {}
-    for row in flagged:
-        service = row["service"]
-        level = row["level"]
-        matrix.setdefault(service, {})
-        matrix[service][level] = matrix[service].get(level, 0) + 1
-    return {
-        service: {level: matrix[service][level] for level in sorted(matrix[service])}
-        for service in sorted(matrix)
-    }
-
-
 def export_report(events: list[dict], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    if _legacy_verifier_mode():
-        flagged = _legacy_flagged(events)
-        summary = _legacy_summary(events, flagged)
-        matrix = _legacy_service_matrix(flagged)
-        (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-        (output_dir / "service_matrix.json").write_text(json.dumps(matrix, indent=2) + "\n")
-        with (output_dir / "flagged.jsonl").open("w", encoding="utf-8") as handle:
-            for row in flagged:
-                handle.write(json.dumps(row, separators=(",", ":")) + "\n")
-        return
 
     canonical = canonicalize_events(events)
 
@@ -267,8 +185,8 @@ def export_report(events: list[dict], output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default=os.environ.get("EVENTS_PATH", "/app/data/events.json"))
-    parser.add_argument("--output-dir", default=os.environ.get("OUTPUT_DIR", "/app/output"))
+    parser.add_argument("--input", default="/app/data/events.json")
+    parser.add_argument("--output-dir", default="/app/output")
     args = parser.parse_args()
 
     events = load_events(Path(args.input))
