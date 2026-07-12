@@ -272,6 +272,7 @@ def export_report(
             }
         )
     chronological = sorted(flagged, key=lambda row: (row["ts_ms"], str(row["id"])))
+    finalized_by_id: dict[str, dict] = {}
     for target_index, target in enumerate(chronological):
         candidates: list[tuple[int, int, str]] = []
         for source in chronological[:target_index]:
@@ -292,16 +293,51 @@ def export_report(
         strongest = sorted(candidates, key=lambda item: (-item[0], -item[1], item[2]))[:3]
         target["dependency_pressure_score"] = sum(item[0] for item in strongest)
         target["dependency_source_ids"] = [item[2] for item in strongest]
+        lineage_ids: list[str] = []
+        source_burst_rollup = 0
+        source_depths: list[int] = []
+        for rank, (_, _, source_id) in enumerate(strongest):
+            source = finalized_by_id[source_id]
+            source_burst_rollup += source["causal_burst_score"] // (rank + 2)
+            source_depths.append(source["dependency_chain_depth"])
+            for lineage_id in [source_id, *source["dependency_lineage_ids"]]:
+                if lineage_id not in lineage_ids:
+                    lineage_ids.append(lineage_id)
+                if len(lineage_ids) == 5:
+                    break
+            if len(lineage_ids) == 5:
+                break
+        target["dependency_chain_depth"] = (
+            min(1 + max(source_depths), 6) if source_depths else 0
+        )
+        target["dependency_lineage_ids"] = lineage_ids
+        target["causal_burst_score"] = min(
+            target["dependency_pressure_score"]
+            + source_burst_rollup
+            + (target["dependency_chain_depth"] * 3),
+            9999,
+        )
+        target["lineage_digest"] = hashlib.sha256(
+            (
+                f"{target['id']}|{target['dependency_chain_depth']}|"
+                f"{target['causal_burst_score']}|{','.join(lineage_ids)}"
+            ).encode("utf-8")
+        ).hexdigest()[:12]
         target["event_digest"] = hashlib.sha1(
             (
                 f"{target['id']}|{target['ts_ms']}|{target['level']}|{target['service']}|"
                 f"{target['message']}|{target['silence_pressure_score']}|"
-                f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}"
+                f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}|"
+                f"{target['dependency_chain_depth']}|{target['causal_burst_score']}|"
+                f"{','.join(target['dependency_lineage_ids'])}|{target['lineage_digest']}"
             ).encode("utf-8")
         ).hexdigest()[:10]
+        finalized_by_id[str(target["id"])] = target
     flagged.sort(key=lambda row: row["id"])
     flagged.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
+    flagged.sort(key=lambda row: row["dependency_chain_depth"], reverse=True)
     flagged.sort(key=lambda row: row["dependency_pressure_score"], reverse=True)
+    flagged.sort(key=lambda row: row["causal_burst_score"], reverse=True)
     flagged.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     flagged.sort(key=lambda row: row["ts_ms"], reverse=True)
 
@@ -337,6 +373,17 @@ def export_report(
             (row["dependency_pressure_score"] for row in flagged),
             default=0,
         ),
+        "max_causal_burst_score": max(
+            (row["causal_burst_score"] for row in flagged),
+            default=0,
+        ),
+        "max_dependency_chain_depth": max(
+            (row["dependency_chain_depth"] for row in flagged),
+            default=0,
+        ),
+        "lineage_digest_checksum": hashlib.sha256(
+            "|".join(row["lineage_digest"] for row in flagged).encode("utf-8")
+        ).hexdigest(),
         "flagged_digest_checksum": hashlib.sha256(
             "|".join(row["event_digest"] for row in flagged).encode("utf-8")
         ).hexdigest(),

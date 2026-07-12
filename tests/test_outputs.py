@@ -344,6 +344,17 @@ def _compute_summary(
             (row["dependency_pressure_score"] for row in flagged),
             default=0,
         ),
+        "max_causal_burst_score": max(
+            (row["causal_burst_score"] for row in flagged),
+            default=0,
+        ),
+        "max_dependency_chain_depth": max(
+            (row["dependency_chain_depth"] for row in flagged),
+            default=0,
+        ),
+        "lineage_digest_checksum": hashlib.sha256(
+            "|".join(row["lineage_digest"] for row in flagged).encode("utf-8")
+        ).hexdigest(),
         "flagged_digest_checksum": hashlib.sha256(
             "|".join(row["event_digest"] for row in flagged).encode("utf-8")
         ).hexdigest(),
@@ -381,6 +392,7 @@ def _compute_flagged(
             }
         )
     chronological = sorted(rows, key=lambda row: (row["ts_ms"], str(row["id"])))
+    finalized_by_id: dict[str, dict] = {}
     for target_index, target in enumerate(chronological):
         candidates: list[tuple[int, int, str]] = []
         for source in chronological[:target_index]:
@@ -401,16 +413,51 @@ def _compute_flagged(
         strongest = sorted(candidates, key=lambda item: (-item[0], -item[1], item[2]))[:3]
         target["dependency_pressure_score"] = sum(item[0] for item in strongest)
         target["dependency_source_ids"] = [item[2] for item in strongest]
+        lineage_ids: list[str] = []
+        source_burst_rollup = 0
+        source_depths: list[int] = []
+        for rank, (_, _, source_id) in enumerate(strongest):
+            source = finalized_by_id[source_id]
+            source_burst_rollup += source["causal_burst_score"] // (rank + 2)
+            source_depths.append(source["dependency_chain_depth"])
+            for lineage_id in [source_id, *source["dependency_lineage_ids"]]:
+                if lineage_id not in lineage_ids:
+                    lineage_ids.append(lineage_id)
+                if len(lineage_ids) == 5:
+                    break
+            if len(lineage_ids) == 5:
+                break
+        target["dependency_chain_depth"] = (
+            min(1 + max(source_depths), 6) if source_depths else 0
+        )
+        target["dependency_lineage_ids"] = lineage_ids
+        target["causal_burst_score"] = min(
+            target["dependency_pressure_score"]
+            + source_burst_rollup
+            + (target["dependency_chain_depth"] * 3),
+            9999,
+        )
+        target["lineage_digest"] = hashlib.sha256(
+            (
+                f"{target['id']}|{target['dependency_chain_depth']}|"
+                f"{target['causal_burst_score']}|{','.join(lineage_ids)}"
+            ).encode("utf-8")
+        ).hexdigest()[:12]
         target["event_digest"] = hashlib.sha1(
             (
                 f"{target['id']}|{target['ts_ms']}|{target['level']}|{target['service']}|"
                 f"{target['message']}|{target['silence_pressure_score']}|"
-                f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}"
+                f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}|"
+                f"{target['dependency_chain_depth']}|{target['causal_burst_score']}|"
+                f"{','.join(target['dependency_lineage_ids'])}|{target['lineage_digest']}"
             ).encode("utf-8")
         ).hexdigest()[:10]
+        finalized_by_id[str(target["id"])] = target
     rows.sort(key=lambda row: row["id"])
     rows.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
+    rows.sort(key=lambda row: row["dependency_chain_depth"], reverse=True)
     rows.sort(key=lambda row: row["dependency_pressure_score"], reverse=True)
+    rows.sort(key=lambda row: row["causal_burst_score"], reverse=True)
     rows.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     rows.sort(key=lambda row: row["ts_ms"], reverse=True)
     return rows
@@ -562,11 +609,15 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "dependency_compaction_checksum",
         "max_silence_pressure_score",
         "max_dependency_pressure_score",
+        "max_causal_burst_score",
+        "max_dependency_chain_depth",
+        "lineage_digest_checksum",
         "flagged_digest_checksum",
     ):
         assert verified[key] == expected[key]
     assert list(verified["level_counts"].keys()) == list(LEVEL_ORDER)
     assert len(verified["canonical_fingerprint"]) == 40
+    assert len(verified["lineage_digest_checksum"]) == 64
     assert len(verified["flagged_digest_checksum"]) == 64
 
 
@@ -595,6 +646,10 @@ def test_flagged_levels(flagged_rows: list[dict]):
         assert isinstance(row["silence_pressure_score"], int)
         assert isinstance(row["dependency_pressure_score"], int)
         assert isinstance(row["dependency_source_ids"], list)
+        assert isinstance(row["dependency_chain_depth"], int)
+        assert isinstance(row["dependency_lineage_ids"], list)
+        assert isinstance(row["causal_burst_score"], int)
+        assert len(row["lineage_digest"]) == 12
         assert len(row["event_digest"]) == 10
 
 
@@ -687,6 +742,9 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["dependency_compaction_checksum"] == alt["dependency_compaction_checksum"]
     assert summary["max_silence_pressure_score"] == alt["max_silence_pressure_score"]
     assert summary["max_dependency_pressure_score"] == alt["max_dependency_pressure_score"]
+    assert summary["max_causal_burst_score"] == alt["max_causal_burst_score"]
+    assert summary["max_dependency_chain_depth"] == alt["max_dependency_chain_depth"]
+    assert summary["lineage_digest_checksum"] == alt["lineage_digest_checksum"]
     assert summary["flagged_digest_checksum"] == alt["flagged_digest_checksum"]
     assert [row["id"] for row in flagged] == alt["flagged_ids_desc"]
 
@@ -1104,6 +1162,9 @@ def test_dependency_source_path_affects_output(tmp_path_factory):
         assert baseline_summary["flagged_digest_checksum"] != empty_summary[
             "flagged_digest_checksum"
         ]
+        assert baseline_summary["lineage_digest_checksum"] != empty_summary[
+            "lineage_digest_checksum"
+        ]
     finally:
         DEPENDENCY_PATH.write_text(original_dependencies)
 
@@ -1158,9 +1219,56 @@ def test_dependency_dedupe_lag_boundaries_and_top_three_sources(tmp_path_factory
         target = next(row for row in flagged if row["id"] == "s4")
         assert target["dependency_source_ids"] == ["s1", "s3", "s2"]
         assert target["dependency_pressure_score"] == 40
+        assert target["dependency_chain_depth"] == 1
+        assert target["dependency_lineage_ids"] == ["s1", "s3", "s2"]
+        assert target["causal_burst_score"] == 43
         assert json.loads((out_dir / "summary.json").read_text()) == _compute_summary(
             events, dependency_rows=rules
         )
+    finally:
+        DEPENDENCY_PATH.write_text(original_dependencies)
+
+
+def test_recursive_dependency_lineage_and_burst_propagation(tmp_path_factory):
+    original_dependencies = DEPENDENCY_PATH.read_text()
+    try:
+        rules = [
+            {
+                "upstream_service": "api",
+                "downstream_service": "worker",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 4,
+            },
+            {
+                "upstream_service": "worker",
+                "downstream_service": "db",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 2,
+            },
+        ]
+        DEPENDENCY_PATH.write_text(json.dumps(rules) + "\n")
+        events = [
+            {"id": "a", "ts_ms": 100, "level": "error", "service": "api", "message": "a"},
+            {"id": "b", "ts_ms": 200, "level": "error", "service": "worker", "message": "b"},
+            {"id": "c", "ts_ms": 300, "level": "error", "service": "db", "message": "c"},
+        ]
+        input_path = tmp_path_factory.mktemp("lineage") / "events.json"
+        input_path.write_text(json.dumps(events))
+        out_dir = tmp_path_factory.mktemp("lineage_out")
+        result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+        assert result.returncode == 0, result.stderr
+        by_id = {row["id"]: row for row in _flagged_rows(out_dir / "flagged.jsonl")}
+        assert by_id["a"]["dependency_chain_depth"] == 0
+        assert by_id["a"]["dependency_lineage_ids"] == []
+        assert by_id["a"]["causal_burst_score"] == 0
+        assert by_id["b"]["dependency_chain_depth"] == 1
+        assert by_id["b"]["dependency_lineage_ids"] == ["a"]
+        assert by_id["b"]["causal_burst_score"] == 19
+        assert by_id["c"]["dependency_chain_depth"] == 2
+        assert by_id["c"]["dependency_lineage_ids"] == ["b", "a"]
+        assert by_id["c"]["causal_burst_score"] == 31
     finally:
         DEPENDENCY_PATH.write_text(original_dependencies)
 
