@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "contract_version": "4.0",
+  "contract_version": "4.1",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -12,6 +12,11 @@
   "quick_contract_index": {
     "diagnose_input_stats_exact_keys": ["event_count", "unique_event_ids", "services"],
     "repair_output_files": ["summary.json", "service_matrix.json", "flagged.jsonl", "diagnosis.json", "repair_audit.json"],
+    "repair_output_path_keys": {
+      "summary_json": "<output-dir>/summary.json",
+      "flagged_jsonl": "<output-dir>/flagged.jsonl",
+      "service_matrix_json": "<output-dir>/service_matrix.json"
+    },
     "pipeline_public_interface": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details"
   },
@@ -136,6 +141,8 @@
         "max_dependency_pressure_score",
         "max_causal_burst_score",
         "max_dependency_chain_depth",
+        "max_blast_radius_score",
+        "blast_radius_digest_checksum",
         "lineage_digest_checksum",
         "flagged_digest_checksum"
       ]
@@ -173,8 +180,8 @@
     "total_events": "count canonical deduped events (suppressed rows remain in totals)",
     "flagged_export": "include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, then compute stateful dependency pressure and the single authoritative event_digest for included rows; final sort is defined by flagged_sort_tiebreaks",
     "silence_pressure_score": "for each included flagged row, compute probe window [ts_ms-90, ts_ms+1) overlap against compacted (service, all) and (service, level) silence windows; score=(all_overlap_ms//25)+(level_overlap_ms//15)",
-    "event_digest": "first 10 lowercase SHA1 hex chars of id|ts_ms|level|service|message|silence_pressure_score|dependency_pressure_score|comma_joined_dependency_source_ids|dependency_chain_depth|causal_burst_score|comma_joined_dependency_lineage_ids|lineage_digest; this is the only event_digest definition",
-    "flagged_sort_tiebreaks": "ts_ms desc, severity rank desc, causal_burst_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc"
+    "event_digest": "first 10 lowercase SHA1 hex chars of id|ts_ms|level|service|message|silence_pressure_score|dependency_pressure_score|comma_joined_dependency_source_ids|dependency_chain_depth|causal_burst_score|comma_joined_dependency_lineage_ids|lineage_digest|blast_radius_score|comma_joined_blast_radius_services|blast_radius_digest; this is the only event_digest definition",
+    "flagged_sort_tiebreaks": "ts_ms desc, severity rank desc, causal_burst_score desc, blast_radius_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc"
   },
   "repair_audit": {
     "required_keys": [
@@ -200,7 +207,9 @@
       "compute_dependency_pressure",
       "compute_dependency_lineage",
       "compute_causal_burst",
+      "compute_blast_radius",
       "build_lineage_digest",
+      "build_blast_radius_digest",
       "build_event_digest",
       "filter_suppressed",
       "build_flagged"
@@ -288,6 +297,9 @@
       "dependency_chain_depth",
       "dependency_lineage_ids",
       "causal_burst_score",
+      "blast_radius_services",
+      "blast_radius_score",
+      "blast_radius_digest",
       "lineage_digest",
       "event_digest"
     ],
@@ -305,6 +317,8 @@
       "max_dependency_pressure_score": "maximum dependency_pressure_score across final flagged rows (0 when there are no flagged rows)",
       "max_causal_burst_score": "maximum causal_burst_score across final flagged rows (0 when there are no flagged rows)",
       "max_dependency_chain_depth": "maximum dependency_chain_depth across final flagged rows (0 when there are no flagged rows)",
+      "max_blast_radius_score": "maximum blast_radius_score across final flagged rows (0 when there are no flagged rows)",
+      "blast_radius_digest_checksum": "sha256('|'.join(blast_radius_digest values in final flagged order)) lowercase 64 hex chars",
       "lineage_digest_checksum": "sha256('|'.join(lineage_digest values in final flagged order)) lowercase 64 hex chars",
       "flagged_digest_checksum": "sha256('|'.join(event_digest values in final flagged order)) lowercase 64 hex chars"
     },
@@ -326,10 +340,13 @@
         "dependency_chain_depth",
         "dependency_lineage_ids",
         "causal_burst_score",
+        "blast_radius_services",
+        "blast_radius_score",
+        "blast_radius_digest",
         "lineage_digest",
         "event_digest"
       ],
-      "sort": "ts_ms descending with tiebreaks severity rank desc, causal_burst_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc",
+      "sort": "ts_ms descending with tiebreaks severity rank desc, causal_burst_score desc, blast_radius_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc",
       "levels_included": ["warn", "error"],
       "exclude_suppressed": true,
       "json_format": "compact (no space after colon)"
@@ -360,6 +377,12 @@
     "source_burst_rollup": "sum source.causal_burst_score // (rank+2) for retained direct sources, where rank is zero-based dependency_source_ids order (divisors 2,3,4)",
     "causal_burst_score": "min(dependency_pressure_score + source_burst_rollup + dependency_chain_depth*3, 9999)",
     "lineage_digest": "first 12 lowercase SHA256 hex chars of id|dependency_chain_depth|causal_burst_score|comma_joined_dependency_lineage_ids",
+    "blast_radius_graph": "collapse canonical dependency rules to one directed service edge per (upstream_service,downstream_service), retaining the maximum weight across all lag ranges",
+    "blast_radius_paths": "for each flagged row's service, enumerate every directed path of length one or two. A destination's path capacity is the first-edge weight for length one or min(first-edge weight,second-edge weight) for length two. Exclude paths whose destination is the origin service.",
+    "blast_radius_cycle_and_dedupe": "cycles are bounded by the two-hop limit; for each distinct destination retain only its maximum path capacity across all one-hop and two-hop paths",
+    "blast_radius_services": "distinct retained destinations sorted lexicographically",
+    "blast_radius_score": "sum the retained maximum path capacity for each blast_radius_services destination",
+    "blast_radius_digest": "first 10 lowercase SHA1 hex chars of service|comma_joined_blast_radius_services|blast_radius_score",
     "event_digest_reference": "use canonicalization.event_digest; there is no baseline/extended digest variant",
     "worked_example_max_rule_and_top_three": {
       "severity_rank": {"error": 4, "warn": 3},

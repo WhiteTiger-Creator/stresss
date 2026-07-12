@@ -209,6 +209,36 @@ def dependency_compaction_checksum(rules: list[dict]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
+def dependency_blast_radius(
+    service: str, rules: list[dict]
+) -> tuple[list[str], int]:
+    edge_weights: dict[tuple[str, str], int] = {}
+    for rule in rules:
+        edge = (rule["upstream_service"], rule["downstream_service"])
+        edge_weights[edge] = max(edge_weights.get(edge, 0), rule["weight"])
+    adjacency: dict[str, list[tuple[str, int]]] = {}
+    for (upstream, downstream), weight in edge_weights.items():
+        adjacency.setdefault(upstream, []).append((downstream, weight))
+    for upstream in adjacency:
+        adjacency[upstream].sort()
+
+    strongest_capacity: dict[str, int] = {}
+    for downstream, weight in adjacency.get(service, []):
+        if downstream != service:
+            strongest_capacity[downstream] = max(
+                strongest_capacity.get(downstream, 0), weight
+            )
+        for second_hop, second_weight in adjacency.get(downstream, []):
+            if second_hop == service:
+                continue
+            capacity = min(weight, second_weight)
+            strongest_capacity[second_hop] = max(
+                strongest_capacity.get(second_hop, 0), capacity
+            )
+    services = sorted(strongest_capacity)
+    return services, sum(strongest_capacity.values())
+
+
 def probe_overlap_ms(anchor_ms: int, spans: list[tuple[int, int]], lookback_ms: int = 90) -> int:
     probe_start = anchor_ms - lookback_ms
     probe_end = anchor_ms + 1
@@ -317,6 +347,16 @@ def export_report(
             + (target["dependency_chain_depth"] * 3),
             9999,
         )
+        (
+            target["blast_radius_services"],
+            target["blast_radius_score"],
+        ) = dependency_blast_radius(target["service"], dependency_rules)
+        target["blast_radius_digest"] = hashlib.sha1(
+            (
+                f"{target['service']}|{','.join(target['blast_radius_services'])}|"
+                f"{target['blast_radius_score']}"
+            ).encode("utf-8")
+        ).hexdigest()[:10]
         target["lineage_digest"] = hashlib.sha256(
             (
                 f"{target['id']}|{target['dependency_chain_depth']}|"
@@ -329,7 +369,9 @@ def export_report(
                 f"{target['message']}|{target['silence_pressure_score']}|"
                 f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}|"
                 f"{target['dependency_chain_depth']}|{target['causal_burst_score']}|"
-                f"{','.join(target['dependency_lineage_ids'])}|{target['lineage_digest']}"
+                f"{','.join(target['dependency_lineage_ids'])}|{target['lineage_digest']}|"
+                f"{target['blast_radius_score']}|{','.join(target['blast_radius_services'])}|"
+                f"{target['blast_radius_digest']}"
             ).encode("utf-8")
         ).hexdigest()[:10]
         finalized_by_id[str(target["id"])] = target
@@ -337,6 +379,7 @@ def export_report(
     flagged.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
     flagged.sort(key=lambda row: row["dependency_chain_depth"], reverse=True)
     flagged.sort(key=lambda row: row["dependency_pressure_score"], reverse=True)
+    flagged.sort(key=lambda row: row["blast_radius_score"], reverse=True)
     flagged.sort(key=lambda row: row["causal_burst_score"], reverse=True)
     flagged.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     flagged.sort(key=lambda row: row["ts_ms"], reverse=True)
@@ -381,6 +424,13 @@ def export_report(
             (row["dependency_chain_depth"] for row in flagged),
             default=0,
         ),
+        "max_blast_radius_score": max(
+            (row["blast_radius_score"] for row in flagged),
+            default=0,
+        ),
+        "blast_radius_digest_checksum": hashlib.sha256(
+            "|".join(row["blast_radius_digest"] for row in flagged).encode("utf-8")
+        ).hexdigest(),
         "lineage_digest_checksum": hashlib.sha256(
             "|".join(row["lineage_digest"] for row in flagged).encode("utf-8")
         ).hexdigest(),

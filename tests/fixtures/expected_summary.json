@@ -24,8 +24,10 @@
   "max_dependency_pressure_score": 26,
   "max_causal_burst_score": 61,
   "max_dependency_chain_depth": 4,
+  "max_blast_radius_score": 5,
+  "blast_radius_digest_checksum": "edfb26f2538960aa6b05924853072cf3ba03b99275dbf6e0c1dbed052518977c",
   "lineage_digest_checksum": "d2ffd2a33b92318e4b97fe97c1d55a7438939045b419a9f656d5d9ecd5e4a249",
-  "flagged_digest_checksum": "897dfe26fda7b44f92a1a147f5c059912ba6c64eefa981abcc6c6a371aa89533",
+  "flagged_digest_checksum": "b8b8e38759d9c6dbb312513f2e6ab900593df5fb24584be4a321d5d349b537f9",
   "event_count": 19,
   "unique_ids": 16,
   "expected_flagged_ids_desc": [
@@ -97,8 +99,10 @@
     "max_dependency_pressure_score": 0,
     "max_causal_burst_score": 0,
     "max_dependency_chain_depth": 0,
+    "max_blast_radius_score": 5,
+    "blast_radius_digest_checksum": "d4b07df646e0596f0f20bdf81a40012ac61ac088b06320d0d34cbc181d1b5738",
     "lineage_digest_checksum": "ac672a23bc8beac28b65872f934336bb477264e4f34a959d449fc0425a61bb7c",
-    "flagged_digest_checksum": "3059ac3e34747729e40c9bd677e4ad109c46858a8d7ebf12cccac959da05eec3",
+    "flagged_digest_checksum": "6fc259db1ca1aba2c4b3a378c451f5df66be3b6ecc0c3163bc512aa9f9d17306",
     "flagged_ids_desc": [
       "a4",
       "a2"

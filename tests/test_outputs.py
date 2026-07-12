@@ -202,6 +202,36 @@ def _dependency_compaction_checksum(rules: list[dict]) -> str:
     ).hexdigest()
 
 
+def _dependency_blast_radius(
+    service: str, rules: list[dict]
+) -> tuple[list[str], int]:
+    edge_weights: dict[tuple[str, str], int] = {}
+    for rule in rules:
+        edge = (rule["upstream_service"], rule["downstream_service"])
+        edge_weights[edge] = max(edge_weights.get(edge, 0), rule["weight"])
+    adjacency: dict[str, list[tuple[str, int]]] = {}
+    for (upstream, downstream), weight in edge_weights.items():
+        adjacency.setdefault(upstream, []).append((downstream, weight))
+    for upstream in adjacency:
+        adjacency[upstream].sort()
+
+    strongest_capacity: dict[str, int] = {}
+    for downstream, weight in adjacency.get(service, []):
+        if downstream != service:
+            strongest_capacity[downstream] = max(
+                strongest_capacity.get(downstream, 0), weight
+            )
+        for second_hop, second_weight in adjacency.get(downstream, []):
+            if second_hop == service:
+                continue
+            capacity = min(weight, second_weight)
+            strongest_capacity[second_hop] = max(
+                strongest_capacity.get(second_hop, 0), capacity
+            )
+    services = sorted(strongest_capacity)
+    return services, sum(strongest_capacity.values())
+
+
 def _probe_overlap_ms(anchor_ms: int, spans: list[tuple[int, int]], lookback_ms: int = 90) -> int:
     probe_start = anchor_ms - lookback_ms
     probe_end = anchor_ms + 1
@@ -352,6 +382,13 @@ def _compute_summary(
             (row["dependency_chain_depth"] for row in flagged),
             default=0,
         ),
+        "max_blast_radius_score": max(
+            (row["blast_radius_score"] for row in flagged),
+            default=0,
+        ),
+        "blast_radius_digest_checksum": hashlib.sha256(
+            "|".join(row["blast_radius_digest"] for row in flagged).encode("utf-8")
+        ).hexdigest(),
         "lineage_digest_checksum": hashlib.sha256(
             "|".join(row["lineage_digest"] for row in flagged).encode("utf-8")
         ).hexdigest(),
@@ -437,6 +474,16 @@ def _compute_flagged(
             + (target["dependency_chain_depth"] * 3),
             9999,
         )
+        (
+            target["blast_radius_services"],
+            target["blast_radius_score"],
+        ) = _dependency_blast_radius(target["service"], dependency_rules)
+        target["blast_radius_digest"] = hashlib.sha1(
+            (
+                f"{target['service']}|{','.join(target['blast_radius_services'])}|"
+                f"{target['blast_radius_score']}"
+            ).encode("utf-8")
+        ).hexdigest()[:10]
         target["lineage_digest"] = hashlib.sha256(
             (
                 f"{target['id']}|{target['dependency_chain_depth']}|"
@@ -449,7 +496,9 @@ def _compute_flagged(
                 f"{target['message']}|{target['silence_pressure_score']}|"
                 f"{target['dependency_pressure_score']}|{','.join(target['dependency_source_ids'])}|"
                 f"{target['dependency_chain_depth']}|{target['causal_burst_score']}|"
-                f"{','.join(target['dependency_lineage_ids'])}|{target['lineage_digest']}"
+                f"{','.join(target['dependency_lineage_ids'])}|{target['lineage_digest']}|"
+                f"{target['blast_radius_score']}|{','.join(target['blast_radius_services'])}|"
+                f"{target['blast_radius_digest']}"
             ).encode("utf-8")
         ).hexdigest()[:10]
         finalized_by_id[str(target["id"])] = target
@@ -457,6 +506,7 @@ def _compute_flagged(
     rows.sort(key=lambda row: row["silence_pressure_score"], reverse=True)
     rows.sort(key=lambda row: row["dependency_chain_depth"], reverse=True)
     rows.sort(key=lambda row: row["dependency_pressure_score"], reverse=True)
+    rows.sort(key=lambda row: row["blast_radius_score"], reverse=True)
     rows.sort(key=lambda row: row["causal_burst_score"], reverse=True)
     rows.sort(key=lambda row: SEVERITY_RANK.get(row["level"], 0), reverse=True)
     rows.sort(key=lambda row: row["ts_ms"], reverse=True)
@@ -611,12 +661,15 @@ def test_verified_summary_matches_fixture(diagnosis: dict, expected: dict):
         "max_dependency_pressure_score",
         "max_causal_burst_score",
         "max_dependency_chain_depth",
+        "max_blast_radius_score",
+        "blast_radius_digest_checksum",
         "lineage_digest_checksum",
         "flagged_digest_checksum",
     ):
         assert verified[key] == expected[key]
     assert list(verified["level_counts"].keys()) == list(LEVEL_ORDER)
     assert len(verified["canonical_fingerprint"]) == 40
+    assert len(verified["blast_radius_digest_checksum"]) == 64
     assert len(verified["lineage_digest_checksum"]) == 64
     assert len(verified["flagged_digest_checksum"]) == 64
 
@@ -649,6 +702,9 @@ def test_flagged_levels(flagged_rows: list[dict]):
         assert isinstance(row["dependency_chain_depth"], int)
         assert isinstance(row["dependency_lineage_ids"], list)
         assert isinstance(row["causal_burst_score"], int)
+        assert isinstance(row["blast_radius_services"], list)
+        assert isinstance(row["blast_radius_score"], int)
+        assert len(row["blast_radius_digest"]) == 10
         assert len(row["lineage_digest"]) == 12
         assert len(row["event_digest"]) == 10
 
@@ -744,6 +800,10 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
     assert summary["max_dependency_pressure_score"] == alt["max_dependency_pressure_score"]
     assert summary["max_causal_burst_score"] == alt["max_causal_burst_score"]
     assert summary["max_dependency_chain_depth"] == alt["max_dependency_chain_depth"]
+    assert summary["max_blast_radius_score"] == alt["max_blast_radius_score"]
+    assert summary["blast_radius_digest_checksum"] == alt[
+        "blast_radius_digest_checksum"
+    ]
     assert summary["lineage_digest_checksum"] == alt["lineage_digest_checksum"]
     assert summary["flagged_digest_checksum"] == alt["flagged_digest_checksum"]
     assert [row["id"] for row in flagged] == alt["flagged_ids_desc"]
@@ -1155,6 +1215,8 @@ def test_dependency_source_path_affects_output(tmp_path_factory):
 
         assert baseline_summary["max_dependency_pressure_score"] > 0
         assert empty_summary["max_dependency_pressure_score"] == 0
+        assert baseline_summary["max_blast_radius_score"] > 0
+        assert empty_summary["max_blast_radius_score"] == 0
         assert baseline_summary["dependency_compaction_checksum"] != empty_summary[
             "dependency_compaction_checksum"
         ]
@@ -1164,6 +1226,9 @@ def test_dependency_source_path_affects_output(tmp_path_factory):
         ]
         assert baseline_summary["lineage_digest_checksum"] != empty_summary[
             "lineage_digest_checksum"
+        ]
+        assert baseline_summary["blast_radius_digest_checksum"] != empty_summary[
+            "blast_radius_digest_checksum"
         ]
     finally:
         DEPENDENCY_PATH.write_text(original_dependencies)
@@ -1269,6 +1334,64 @@ def test_recursive_dependency_lineage_and_burst_propagation(tmp_path_factory):
         assert by_id["c"]["dependency_chain_depth"] == 2
         assert by_id["c"]["dependency_lineage_ids"] == ["b", "a"]
         assert by_id["c"]["causal_burst_score"] == 31
+    finally:
+        DEPENDENCY_PATH.write_text(original_dependencies)
+
+
+def test_dependency_blast_radius_is_cycle_safe_and_uses_strongest_path(
+    tmp_path_factory,
+):
+    original_dependencies = DEPENDENCY_PATH.read_text()
+    try:
+        rules = [
+            {
+                "upstream_service": "api",
+                "downstream_service": "worker",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 4,
+            },
+            {
+                "upstream_service": "worker",
+                "downstream_service": "db",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 3,
+            },
+            {
+                "upstream_service": "api",
+                "downstream_service": "db",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 2,
+            },
+            {
+                "upstream_service": "db",
+                "downstream_service": "api",
+                "lag_min_ms": 1,
+                "lag_max_ms": 200,
+                "weight": 9,
+            },
+        ]
+        DEPENDENCY_PATH.write_text(json.dumps(rules) + "\n")
+        events = [
+            {
+                "id": "origin",
+                "ts_ms": 100,
+                "level": "error",
+                "service": "api",
+                "message": "origin",
+            }
+        ]
+        input_path = tmp_path_factory.mktemp("blast") / "events.json"
+        input_path.write_text(json.dumps(events))
+        out_dir = tmp_path_factory.mktemp("blast_out")
+        result = _run_pipeline(input_path=input_path, output_dir=out_dir)
+        assert result.returncode == 0, result.stderr
+        row = _flagged_rows(out_dir / "flagged.jsonl")[0]
+        assert row["blast_radius_services"] == ["db", "worker"]
+        assert row["blast_radius_score"] == 7
+        assert len(row["blast_radius_digest"]) == 10
     finally:
         DEPENDENCY_PATH.write_text(original_dependencies)
 
