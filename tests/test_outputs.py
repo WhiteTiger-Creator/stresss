@@ -1059,6 +1059,22 @@ def test_silence_compaction_and_level_scope_exercised(tmp_path_factory):
         SILENCE_PATH.write_text(original_silence)
 
 
+def test_silence_checksum_worked_example_matches_source_data():
+    example = SPEC_DATA["canonicalization"][
+        "silence_compaction_checksum_worked_example"
+    ]
+    compacted = _compact_silence_windows(json.loads(SILENCE_PATH.read_text()))
+    payload = "\n".join(
+        f"{service}|{scope}|{start}|{end}"
+        for service, scope in sorted(compacted)
+        for start, end in compacted[(service, scope)]
+    )
+    assert payload == example["exact_sha256_payload"]
+    assert hashlib.sha256(payload.encode("utf-8")).hexdigest() == example[
+        "expected_sha256"
+    ]
+
+
 def test_dependency_source_path_affects_output(tmp_path_factory):
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:
