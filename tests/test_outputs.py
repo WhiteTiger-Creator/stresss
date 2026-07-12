@@ -1223,6 +1223,17 @@ def test_event_digest_worked_example_matches_contract():
     ] == example["expected_first_10_sha1"]
 
 
+def test_evidence_term_quick_checklist_matches_authoritative_contract():
+    """Keep the prominent evidence checklist synchronized with nested rules."""
+    checklist = SPEC_DATA["quick_contract_index"]["evidence_term_checklist"]
+    field_order = checklist["field_order"]
+    assert field_order == ["dossier_quote", "pipeline_evidence", "repair_action"]
+    for issue_id, required in ISSUE_EVIDENCE_TERMS.items():
+        assert checklist[issue_id] == [
+            required[field_name] for field_name in field_order
+        ]
+
+
 def test_dependency_source_path_affects_output(tmp_path_factory):
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:

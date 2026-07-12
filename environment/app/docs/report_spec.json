@@ -16,6 +16,16 @@
       "nested_evidence": ["dossier_quote", "pipeline_evidence", "repair_action"],
       "minimum_lengths": [30, 10, 10]
     },
+    "evidence_term_checklist": {
+      "field_order": ["dossier_quote", "pipeline_evidence", "repair_action"],
+      "wrong_timestamp_field": [["ts_ms"], ["event[\"timestamp\"]"], ["ts_ms"]],
+      "severity_filter": [["warn"], ["level == \"error\""], ["warn"]],
+      "sort_order": [["ascending", "descending"], ["sort", "ts_ms"], ["descending"]],
+      "level_normalization": [["WARN", "lowercase"], ["level"], ["lower"]],
+      "dedupe_policy": [["duplicate", "ts_ms"], ["for event in events"], ["duplicate"]],
+      "suppressed_filter": [["suppressed", "excluded"], ["suppressed"], ["suppressed"]],
+      "matching": "dossier_quote and repair_action terms are case-insensitive; pipeline_evidence terms are case-sensitive and the complete evidence value must be a literal substring of the frozen source"
+    },
     "diagnose_input_stats_exact_keys": ["event_count", "unique_event_ids", "services"],
     "repair_output_files": ["summary.json", "service_matrix.json", "flagged.jsonl", "diagnosis.json", "repair_audit.json"],
     "repair_output_path_keys": {
@@ -36,6 +46,11 @@
       "silence_windows": "/app/data/silence_windows.json",
       "service_dependencies": "/app/data/service_dependencies.json",
       "resolution": "--input replaces only events_default; policy paths remain absolute and are never resolved relative to --input or --output-dir"
+    },
+    "silence_scope_allowlist": {
+      "allowed": ["all", "warn", "error"],
+      "drop_before": ["interval_compaction", "silence_compaction_checksum"],
+      "explicitly_invalid_examples": ["debug", "info"]
     },
     "pipeline_public_interface": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details"

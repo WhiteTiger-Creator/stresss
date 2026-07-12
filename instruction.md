@@ -14,6 +14,7 @@ Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The norm
 - Report exactly `wrong_timestamp_field`, `severity_filter`, `sort_order`, `level_normalization`, `dedupe_policy`, and `suppressed_filter`.
 - Each issue contains `id`, `severity`, `description`, `resolution`, and nested `evidence` with `dossier_quote`, `pipeline_evidence`, and `repair_action`.
 - Evidence minimum lengths are 30, 10, and 10. Dossier quotes are verbatim; pipeline excerpts are case-sensitive frozen-source substrings. Required evidence terms and ordering words such as `ascending`/`descending` must match the spec.
+- Before finishing, check every evidence field against `quick_contract_index.evidence_term_checklist` in the spec. In particular, the level-normalization repair action must contain `lower`, and dedupe pipeline evidence must contain the exact frozen-source substring `for event in events`.
 - Diagnose output has status `diagnosed` and only `pipeline_status`, `issues_found`, and `input_stats`. Repair output has status `repaired`, a complete key-for-key `verified_summary`, and `output_paths` keyed exactly by `summary_json`, `flagged_jsonl`, and `service_matrix_json`.
 - `input_stats.services` contains sorted canonical service names after the same trim/lowercase and alias mapping used by the export; never report raw spellings there.
 
@@ -24,7 +25,7 @@ Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The norm
 - Canonical deduplicated rows use ascending `ts_ms` order. Flagged candidates are unsuppressed, unsilenced `warn`/`error` rows.
 
 ## Silence and dependency state
-- Normalize, validate, and compact silence windows per `(service, level_scope)`; merge overlap and touching intervals. Match half-open windows and calculate `(all_overlap_ms//25)+(level_overlap_ms//15)` over `[ts_ms-90, ts_ms+1)`.
+- Normalize, validate, and compact silence windows per `(service, level_scope)`; the only valid scopes are `all`, `warn`, and `error`. Drop `debug`, `info`, and every other scope before compaction and checksum generation. Merge overlap and touching intervals, match half-open windows, and calculate `(all_overlap_ms//25)+(level_overlap_ms//15)` over `[ts_ms-90, ts_ms+1)`.
 - Canonicalize dependency rules, reject invalid ranges/weights, and deduplicate identical service/range rules by maximum weight.
 - Finalize candidates chronologically by `(ts_ms asc, id asc)`. A source contributes `weight*severity_rank + silence_pressure_score + source.dependency_pressure_score//2`; retain its best matching rule, then the strongest three sources by contribution desc, source time desc, and source id asc.
 - Build lineage depth-first in retained-source order, keep five unique ids, cap chain depth at six, and calculate causal burst from finalized earlier sources.
@@ -40,3 +41,4 @@ Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The norm
 - In `repair_audit.json`, `patched_workflow` is the plain string `/app/workflow/export_report.py`. `pre_repair` uses exactly `pipeline_source_sha256` and `pipeline_tokens_present`; `post_repair` uses `flagged_count` and `rerun_flagged_count`. Copy `processing_steps` from the spec verbatim and in order. Token maps use the exact forbidden-source literals.
 - Repair must reinstall the workflow even after reset, run it twice for idempotency, and record integer `flagged_count` and `rerun_flagged_count`. Leave `/app/output/diagnosis.json` in repaired mode.
 - A repair targeting a custom directory writes all five artifacts only beneath that directory. It must not create, rewrite, or otherwise update `/app/output/diagnosis.json` or any other default-output artifact.
+- Finish by running `python3 /app/log_audit.py repair --output-dir /app/output`; validation in a temporary directory does not satisfy the final handoff.
