@@ -731,7 +731,9 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
         assert quote in dossier_text
 
 
-def test_repair_supports_custom_output_dir(tmp_path_factory, expected: dict):
+def test_repair_repatches_reset_workflow_with_custom_output_dir(
+    tmp_path_factory, expected: dict
+):
     custom_dir = tmp_path_factory.mktemp("custom_output")
     current = PIPELINE.read_text()
     try:
@@ -743,6 +745,8 @@ def test_repair_supports_custom_output_dir(tmp_path_factory, expected: dict):
             timeout=60,
         )
         assert result.returncode == 0, result.stderr
+        assert "reverse=True" in PIPELINE.read_text()
+        assert 'event["timestamp"]' not in PIPELINE.read_text()
         summary = json.loads((custom_dir / "summary.json").read_text())
         flagged = _flagged_rows(custom_dir / "flagged.jsonl")
         diagnosis = json.loads((custom_dir / "diagnosis.json").read_text())

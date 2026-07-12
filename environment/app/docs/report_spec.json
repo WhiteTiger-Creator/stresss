@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "contract_version": "3.9",
+  "contract_version": "3.10",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -243,6 +243,19 @@
     "path": "/app/workflow/export_report.py",
     "cli_usage": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "public_contract": "only the CLI and generated files are contractual; an internal export_report function is optional, and no internal function signature or return type is prescribed",
+    "repair_state_contract": {
+      "self_contained_invocation": "every invocation of `python3 /app/log_audit.py repair --output-dir PATH` must install a correct repaired implementation at /app/workflow/export_report.py before executing it",
+      "starting_state": "the current /app/workflow/export_report.py may contain the frozen broken implementation, a previous repair, or arbitrary stale contents; repair must not assume solve.sh or an earlier repair already patched it",
+      "reset_scenario": "verification may copy /app/workflow/.export_report.original over /app/workflow/export_report.py immediately before invoking repair, including when a custom --output-dir is used",
+      "required_sequence": [
+        "read and capture pre-repair evidence from /app/workflow/.export_report.original",
+        "write or generate the repaired executable at /app/workflow/export_report.py",
+        "run that repaired executable with the requested output directory",
+        "run it again for idempotency verification"
+      ],
+      "frozen_snapshot_rule": "never modify /app/workflow/.export_report.original",
+      "output_directory_rule": "--output-dir changes where the five output artifacts are written; it does not change the workflow path that must be repaired"
+    },
     "defaults": {
       "input": "/app/data/events.json",
       "output_dir": "/app/output",
