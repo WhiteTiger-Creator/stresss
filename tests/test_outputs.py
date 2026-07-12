@@ -1146,6 +1146,7 @@ def test_silence_source_path_affects_output(tmp_path_factory):
 
 
 def test_silence_compaction_and_level_scope_exercised(tmp_path_factory):
+    """Verify scope filtering, aliases, and touching-window compaction."""
     original_silence = SILENCE_PATH.read_text()
     try:
         silence_rows = [
@@ -1176,6 +1177,7 @@ def test_silence_compaction_and_level_scope_exercised(tmp_path_factory):
 
 
 def test_silence_checksum_worked_example_matches_source_data():
+    """Keep the published silence checksum vector synchronized."""
     example = SPEC_DATA["canonicalization"][
         "silence_compaction_checksum_worked_example"
     ]
@@ -1189,6 +1191,14 @@ def test_silence_checksum_worked_example_matches_source_data():
     assert hashlib.sha256(payload.encode("utf-8")).hexdigest() == example[
         "expected_sha256"
     ]
+
+
+def test_event_digest_worked_example_matches_contract():
+    """Keep event-digest field order and delimiters unambiguous."""
+    example = SPEC_DATA["canonicalization"]["event_digest_worked_example"]
+    assert hashlib.sha1(example["exact_utf8_payload"].encode("utf-8")).hexdigest()[
+        :10
+    ] == example["expected_first_10_sha1"]
 
 
 def test_dependency_source_path_affects_output(tmp_path_factory):
@@ -1229,6 +1239,7 @@ def test_dependency_source_path_affects_output(tmp_path_factory):
 
 
 def test_dependency_dedupe_lag_boundaries_and_top_three_sources(tmp_path_factory):
+    """Verify rule dedupe, half-open lag bounds, and strongest-three order."""
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:
         rules = [
@@ -1289,6 +1300,7 @@ def test_dependency_dedupe_lag_boundaries_and_top_three_sources(tmp_path_factory
 
 
 def test_recursive_dependency_lineage_and_burst_propagation(tmp_path_factory):
+    """Verify finalized dependency state propagates through a service chain."""
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:
         rules = [
@@ -1335,6 +1347,7 @@ def test_recursive_dependency_lineage_and_burst_propagation(tmp_path_factory):
 def test_dependency_blast_radius_is_cycle_safe_and_uses_strongest_path(
     tmp_path_factory,
 ):
+    """Verify bounded cycles and strongest one/two-hop destination capacity."""
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:
         rules = [
@@ -1391,6 +1404,7 @@ def test_dependency_blast_radius_is_cycle_safe_and_uses_strongest_path(
 
 
 def test_flagged_sort_tie_break_on_dependency_pressure(tmp_path_factory):
+    """Verify dependency pressure participates in final descending order."""
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:
         rules = [

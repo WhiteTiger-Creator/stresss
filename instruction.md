@@ -1,11 +1,39 @@
-Restore the failed service-log incident export at `/app/workflow/export_report.py`. Build `/app/log_audit.py` with `diagnose --dossier PATH --report PATH` and `repair --output-dir PATH`, using `/app/incident/export_dossier.md` and the frozen `/app/workflow/.export_report.original` to substantiate the six diagnosed defects.
+# Service-log export recovery
 
-Report exactly `wrong_timestamp_field`, `severity_filter`, `sort_order`, `level_normalization`, `dedupe_policy`, and `suppressed_filter`. Every item has `id`, `severity`, `description`, `resolution`, and nested `evidence` containing `dossier_quote`, `pipeline_evidence`, and `repair_action`; those evidence strings have minimum lengths 30, 10, and 10 respectively. Diagnose mode uses status `diagnosed`; repair mode uses `repaired`.
+Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The normative contract is `/app/docs/report_spec.json`; inspect it before implementing.
 
-Repair must be self-contained and safe after the active workflow is reset: capture evidence from the frozen original, reinstall the corrected workflow, execute it for the requested directory, and verify a second idempotent run. Leave the frozen original untouched. The final `/app/output/diagnosis.json` must be the repair-mode report, not a later diagnose-only overwrite.
+## Fixed operational sources
+- Events default to `/app/data/events.json`; workflow `--input PATH` replaces only this event source.
+- Silence windows always come from `/app/data/silence_windows.json`.
+- Dependency rules always come from `/app/data/service_dependencies.json`.
+- Resolve those policy paths exactly as absolute defaults, never relative to the event input or output directory.
+- Evidence comes from `/app/incident/export_dossier.md` and frozen `/app/workflow/.export_report.original`. Never alter the frozen file.
 
-Produce `summary.json`, `service_matrix.json`, compact `flagged.jsonl`, `diagnosis.json`, and `repair_audit.json`. Repair-mode `output_paths` uses exactly `summary_json`, `flagged_jsonl`, and `service_matrix_json`; `verified_summary` must equal the generated summary.
+## CLI and diagnosis
+- Implement `diagnose --dossier PATH --report PATH` and `repair --output-dir PATH`.
+- Report exactly `wrong_timestamp_field`, `severity_filter`, `sort_order`, `level_normalization`, `dedupe_policy`, and `suppressed_filter`.
+- Each issue contains `id`, `severity`, `description`, `resolution`, and nested `evidence` with `dossier_quote`, `pipeline_evidence`, and `repair_action`.
+- Evidence minimum lengths are 30, 10, and 10. Dossier quotes are verbatim; pipeline excerpts are case-sensitive frozen-source substrings. Required evidence terms and ordering words such as `ascending`/`descending` must match the spec.
+- Diagnose output has status `diagnosed` and only `pipeline_status`, `issues_found`, and `input_stats`. Repair output has status `repaired`, a complete key-for-key `verified_summary`, and `output_paths` keyed exactly by `summary_json`, `flagged_jsonl`, and `service_matrix_json`.
 
-`repair_audit.json` has `patched_workflow`, `processing_steps`, `removed_tokens`, `pre_repair`, and `post_repair`. The token maps use exact forbidden-token strings as keys; `pre_repair.pipeline_source_sha256` hashes the frozen bytes, and `post_repair` contains integer `flagged_count` and `rerun_flagged_count`.
+## Canonical export
+- Normalize level by trim/lowercase; normalize service by trim/lowercase plus `api-gw→api`, `api gateway→api`, `database→db`, and `worker-batch→worker`.
+- Integer-coerce `ts_ms` with invalid values becoming zero, collapse message whitespace, and normalize suppressed values (`true/1/yes` versus `false/0/no/empty`).
+- Deduplicate by event id using: greatest `ts_ms`, severity `error>warn>info>debug`, non-suppressed first, lexicographically greater normalized message, then greater normalized service.
+- Canonical deduplicated rows use ascending `ts_ms` order. Flagged candidates are unsuppressed, unsilenced `warn`/`error` rows.
 
-The repaired export must generalize to alternate inputs while handling canonicalization, silence policy, stateful dependency propagation, recursive lineage/burst state, and bounded cycle-safe downstream blast radius. Read silence windows and dependency rules from the source paths named in `/app/docs/report_spec.json`; implement required behavior without relying on prescribed Python variable names or sort syntax. The spec is the operational acceptance contract for graph semantics, deterministic ordering, SHA-1/SHA-256 digest payloads, and exact schemas.
+## Silence and dependency state
+- Normalize, validate, and compact silence windows per `(service, level_scope)`; merge overlap and touching intervals. Match half-open windows and calculate `(all_overlap_ms//25)+(level_overlap_ms//15)` over `[ts_ms-90, ts_ms+1)`.
+- Canonicalize dependency rules, reject invalid ranges/weights, and deduplicate identical service/range rules by maximum weight.
+- Finalize candidates chronologically by `(ts_ms asc, id asc)`. A source contributes `weight*severity_rank + silence_pressure_score + source.dependency_pressure_score//2`; retain its best matching rule, then the strongest three sources by contribution desc, source time desc, and source id asc.
+- Build lineage depth-first in retained-source order, keep five unique ids, cap chain depth at six, and calculate causal burst from finalized earlier sources.
+- Compute blast radius over directed one- and two-hop service paths, bound cycles by that hop limit, and retain the strongest path capacity per destination.
+
+## Ordering, digests, and files
+- Final flagged order is `ts_ms` desc, severity desc, causal burst desc, blast radius desc, dependency pressure desc, chain depth desc, silence pressure desc, then id asc.
+- Canonical fingerprint is SHA-1 over LF-joined ascending canonical rows `id|ts_ms|level|service|message|suppressed_int`. Silence and dependency checksums are SHA-256 over their ordered compacted/canonical rule rows.
+- `lineage_digest` is the first 12 SHA-256 hex characters of `id|depth|burst|comma_joined_lineage`; `blast_radius_digest` is the first 10 SHA-1 characters of `service|comma_joined_services|score`.
+- `event_digest` is the first 10 SHA-1 characters of the ordered row identity, silence/dependency fields, lineage fields and digest, then blast-radius fields and digest exactly as listed in the spec. Hash UTF-8 with literal `|`, comma, and LF delimiters and no trailing delimiter; use the published worked vectors.
+- Emit compact `flagged.jsonl` plus `summary.json`, `service_matrix.json`, `diagnosis.json`, and `repair_audit.json` under the requested output directory.
+- `repair_audit.json` contains `patched_workflow`, `processing_steps`, `removed_tokens`, `pre_repair`, and `post_repair`. Copy the `processing_steps` array from the spec exactly and in order—do not paraphrase it. Token maps use the exact forbidden-source literals.
+- Repair must reinstall the workflow even after reset, run it twice for idempotency, and record integer `flagged_count` and `rerun_flagged_count`. Leave `/app/output/diagnosis.json` in repaired mode.

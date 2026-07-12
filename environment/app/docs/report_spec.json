@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "contract_version": "4.2",
+  "contract_version": "4.3",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -25,6 +25,13 @@
     },
     "repair_audit_exact_keys": ["patched_workflow", "processing_steps", "removed_tokens", "pre_repair", "post_repair"],
     "repair_audit_post_repair_exact_keys": ["flagged_count", "rerun_flagged_count"],
+    "processing_steps_contract": "copy repair_audit.processing_steps verbatim, preserving exact strings and order",
+    "absolute_policy_sources": {
+      "events_default": "/app/data/events.json",
+      "silence_windows": "/app/data/silence_windows.json",
+      "service_dependencies": "/app/data/service_dependencies.json",
+      "resolution": "--input replaces only events_default; policy paths remain absolute and are never resolved relative to --input or --output-dir"
+    },
     "pipeline_public_interface": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details"
   },
@@ -189,6 +196,11 @@
     "flagged_export": "include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, then compute stateful dependency pressure and the single authoritative event_digest for included rows; final sort is defined by flagged_sort_tiebreaks",
     "silence_pressure_score": "for each included flagged row, compute probe window [ts_ms-90, ts_ms+1) overlap against compacted (service, all) and (service, level) silence windows; score=(all_overlap_ms//25)+(level_overlap_ms//15)",
     "event_digest": "first 10 lowercase SHA1 hex chars of id|ts_ms|level|service|message|silence_pressure_score|dependency_pressure_score|comma_joined_dependency_source_ids|dependency_chain_depth|causal_burst_score|comma_joined_dependency_lineage_ids|lineage_digest|blast_radius_score|comma_joined_blast_radius_services|blast_radius_digest; this is the only event_digest definition",
+    "event_digest_worked_example": {
+      "exact_utf8_payload": "e1|100|error|api|bad state|2|7|s0|1|12|s0|abcdef123456|4|db,worker|1234567890",
+      "expected_first_10_sha1": "b251c997eb",
+      "delimiter_contract": "literal pipe between fields, comma inside ordered lists, no trailing delimiter"
+    },
     "flagged_sort_tiebreaks": "ts_ms desc, severity rank desc, causal_burst_score desc, blast_radius_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc"
   },
   "repair_audit": {
