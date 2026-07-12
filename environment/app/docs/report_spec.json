@@ -1,6 +1,6 @@
 {
   "title": "Service Log Export — Diagnosis & Report Spec",
-  "contract_version": "4.1",
+  "contract_version": "4.2",
   "known_issues": [
     {"id": "wrong_timestamp_field"},
     {"id": "severity_filter"},
@@ -10,6 +10,12 @@
     {"id": "suppressed_filter"}
   ],
   "quick_contract_index": {
+    "required_issue_ids": ["wrong_timestamp_field", "severity_filter", "sort_order", "level_normalization", "dedupe_policy", "suppressed_filter"],
+    "issue_item_shape": {
+      "top_level": ["id", "severity", "description", "resolution", "evidence"],
+      "nested_evidence": ["dossier_quote", "pipeline_evidence", "repair_action"],
+      "minimum_lengths": [30, 10, 10]
+    },
     "diagnose_input_stats_exact_keys": ["event_count", "unique_event_ids", "services"],
     "repair_output_files": ["summary.json", "service_matrix.json", "flagged.jsonl", "diagnosis.json", "repair_audit.json"],
     "repair_output_path_keys": {
@@ -17,6 +23,8 @@
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
       "service_matrix_json": "<output-dir>/service_matrix.json"
     },
+    "repair_audit_exact_keys": ["patched_workflow", "processing_steps", "removed_tokens", "pre_repair", "post_repair"],
+    "repair_audit_post_repair_exact_keys": ["flagged_count", "rerun_flagged_count"],
     "pipeline_public_interface": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details"
   },
@@ -280,30 +288,8 @@
       "event[\"timestamp\"]",
       "level == \"error\""
     ],
-    "required_executable_tokens": [
-      ".lower(",
-      ".strip(",
-      "int(",
-      ".split(",
-      "reverse=True",
-      "SEVERITY_RANK",
-      "SERVICE_ALIASES",
-      "SILENCE_WINDOWS_PATH",
-      "DEPENDENCY_RULES_PATH",
-      "silence_compaction_checksum",
-      "dependency_compaction_checksum",
-      "silence_pressure_score",
-      "dependency_pressure_score",
-      "dependency_chain_depth",
-      "dependency_lineage_ids",
-      "causal_burst_score",
-      "blast_radius_services",
-      "blast_radius_score",
-      "blast_radius_digest",
-      "lineage_digest",
-      "event_digest"
-    ],
-    "token_check_scope": "executable code only (exclude comments and docstrings)"
+    "implementation_freedom": "variable names, constants, helper structure, and sorting syntax are not contractual; verification asserts generated behavior and files",
+    "forbidden_token_check_scope": "executable code only (exclude comments and docstrings)"
   },
   "outputs": {
     "summary_json": {

@@ -4,6 +4,9 @@ Pelagia Margin Platform Ops — internal investigation (2025-11 through 2026-03)
 ## Executive Summary
 Pelagia Margin service-log export has been unstable since late 2025. Early triage blamed dashboard cache lag and suggested CSV fallback — those notes are archived below and may contradict later findings. For acceptance behavior, cross-check analyst notes embedded in bridge-shift records against bundled events.json — early triage sections above are not authoritative.
 
+## Investigation Navigation
+The authoritative evidence is in quoted `Incident note` records. Search this archive for `ts_ms`, `ascending`, `WARN`, `duplicate event ids`, `suppressed rows`, and `level ==` rather than treating repeated bridge-shift telemetry or vendor-email archives as requirements.
+
 ## Initial Triage Notes (2025-10 — superseded)
 Lead analyst recommended switching to CSV export and disabling flagged.jsonl paging until cache refresh SLO recovered. Replay against bundled `events.json` showed the pipeline miscounts even on cold cache. Do not implement CSV fallback for this incident.
 

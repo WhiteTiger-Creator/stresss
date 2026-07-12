@@ -36,9 +36,6 @@ REQUIRED_ISSUE_IDS = SPEC_DATA["diagnosis_report"]["issues_found_item"]["allowed
 FORBIDDEN_TOKENS = tuple(
     SPEC_DATA["repair_audit"]["forbidden_executable_tokens"]
 )
-REQUIRED_TOKENS = tuple(
-    SPEC_DATA["workflow_repair"]["required_executable_tokens"]
-)
 FLAGGED_LEVELS = {"warn", "error"}
 LEVEL_ORDER = ("debug", "error", "info", "warn")
 SEVERITY_RANK = {"debug": 1, "info": 2, "warn": 3, "error": 4}
@@ -747,8 +744,6 @@ def test_pipeline_patched():
     code = _executable_text(PIPELINE.read_text())
     for token in FORBIDDEN_TOKENS:
         assert token not in code
-    for token in REQUIRED_TOKENS:
-        assert token in code
 
 
 def test_repair_audit(diagnosis: dict, expected: dict, summary: dict):
@@ -863,7 +858,6 @@ def test_repair_repatches_reset_workflow_with_custom_output_dir(
             timeout=60,
         )
         assert result.returncode == 0, result.stderr
-        assert "reverse=True" in PIPELINE.read_text()
         assert 'event["timestamp"]' not in PIPELINE.read_text()
         summary = json.loads((custom_dir / "summary.json").read_text())
         flagged = _flagged_rows(custom_dir / "flagged.jsonl")
