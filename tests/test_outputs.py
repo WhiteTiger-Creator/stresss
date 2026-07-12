@@ -749,15 +749,24 @@ def test_pipeline_patched():
 def test_repair_audit(diagnosis: dict, expected: dict, summary: dict):
     audit = json.loads(REPAIR_AUDIT_PATH.read_text())
     code = _executable_text(PIPELINE.read_text())
+    assert isinstance(audit["patched_workflow"], str)
     assert audit["patched_workflow"] == str(PIPELINE)
     assert audit["processing_steps"] == SPEC_DATA["repair_audit"]["processing_steps"]
     assert audit["removed_tokens"] == {
         token: token not in code for token in FORBIDDEN_TOKENS
     }
     assert all(audit["removed_tokens"].values())
+    assert set(audit["pre_repair"]) == {
+        "pipeline_source_sha256",
+        "pipeline_tokens_present",
+    }
     assert audit["pre_repair"]["pipeline_source_sha256"] == expected["broken_pipeline_sha256"]
     assert audit["pre_repair"]["pipeline_tokens_present"] == {
         token: True for token in FORBIDDEN_TOKENS
+    }
+    assert set(audit["post_repair"]) == {
+        "flagged_count",
+        "rerun_flagged_count",
     }
     assert audit["post_repair"]["flagged_count"] == summary["flagged_count"]
     assert audit["post_repair"]["rerun_flagged_count"] == summary["flagged_count"]
@@ -849,6 +858,14 @@ def test_repair_repatches_reset_workflow_with_custom_output_dir(
 ):
     custom_dir = tmp_path_factory.mktemp("custom_output")
     current = PIPELINE.read_text()
+    default_artifacts = (
+        SUMMARY_PATH,
+        MATRIX_PATH,
+        FLAGGED_PATH,
+        DIAGNOSIS_PATH,
+        REPAIR_AUDIT_PATH,
+    )
+    default_bytes = {path: path.read_bytes() for path in default_artifacts}
     try:
         shutil.copy(ORIGINAL_PIPELINE, PIPELINE)
         result = subprocess.run(
@@ -868,8 +885,13 @@ def test_repair_repatches_reset_workflow_with_custom_output_dir(
         assert diagnosis["output_paths"]["flagged_jsonl"] == str(custom_dir / "flagged.jsonl")
         assert diagnosis["output_paths"]["service_matrix_json"] == str(custom_dir / "service_matrix.json")
         assert summary["flagged_count"] == expected["flagged_count"]
+        assert {
+            path: path.read_bytes() for path in default_artifacts
+        } == default_bytes
     finally:
         PIPELINE.write_text(current)
+        for path, content in default_bytes.items():
+            path.write_bytes(content)
 
 
 def test_service_and_suppressed_normalization_edge_cases(tmp_path_factory):

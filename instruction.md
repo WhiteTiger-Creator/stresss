@@ -15,6 +15,7 @@ Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The norm
 - Each issue contains `id`, `severity`, `description`, `resolution`, and nested `evidence` with `dossier_quote`, `pipeline_evidence`, and `repair_action`.
 - Evidence minimum lengths are 30, 10, and 10. Dossier quotes are verbatim; pipeline excerpts are case-sensitive frozen-source substrings. Required evidence terms and ordering words such as `ascending`/`descending` must match the spec.
 - Diagnose output has status `diagnosed` and only `pipeline_status`, `issues_found`, and `input_stats`. Repair output has status `repaired`, a complete key-for-key `verified_summary`, and `output_paths` keyed exactly by `summary_json`, `flagged_jsonl`, and `service_matrix_json`.
+- `input_stats.services` contains sorted canonical service names after the same trim/lowercase and alias mapping used by the export; never report raw spellings there.
 
 ## Canonical export
 - Normalize level by trim/lowercase; normalize service by trim/lowercase plus `api-gw→api`, `api gateway→api`, `database→db`, and `worker-batch→worker`.
@@ -35,5 +36,7 @@ Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The norm
 - `lineage_digest` is the first 12 SHA-256 hex characters of `id|depth|burst|comma_joined_lineage`; `blast_radius_digest` is the first 10 SHA-1 characters of `service|comma_joined_services|score`.
 - `event_digest` is the first 10 SHA-1 characters of the ordered row identity, silence/dependency fields, lineage fields and digest, then blast-radius fields and digest exactly as listed in the spec. Hash UTF-8 with literal `|`, comma, and LF delimiters and no trailing delimiter; use the published worked vectors.
 - Emit compact `flagged.jsonl` plus `summary.json`, `service_matrix.json`, `diagnosis.json`, and `repair_audit.json` under the requested output directory.
-- `repair_audit.json` contains `patched_workflow`, `processing_steps`, `removed_tokens`, `pre_repair`, and `post_repair`. Copy the `processing_steps` array from the spec exactly and in order—do not paraphrase it. Token maps use the exact forbidden-source literals.
+- `service_matrix.json` is the service map itself: top-level canonical service names map directly to level-count objects. Do not wrap it in `schema_version` or `services`.
+- In `repair_audit.json`, `patched_workflow` is the plain string `/app/workflow/export_report.py`. `pre_repair` uses exactly `pipeline_source_sha256` and `pipeline_tokens_present`; `post_repair` uses `flagged_count` and `rerun_flagged_count`. Copy `processing_steps` from the spec verbatim and in order. Token maps use the exact forbidden-source literals.
 - Repair must reinstall the workflow even after reset, run it twice for idempotency, and record integer `flagged_count` and `rerun_flagged_count`. Leave `/app/output/diagnosis.json` in repaired mode.
+- A repair targeting a custom directory writes all five artifacts only beneath that directory. It must not create, rewrite, or otherwise update `/app/output/diagnosis.json` or any other default-output artifact.

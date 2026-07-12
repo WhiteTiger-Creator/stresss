@@ -25,6 +25,11 @@
     },
     "repair_audit_exact_keys": ["patched_workflow", "processing_steps", "removed_tokens", "pre_repair", "post_repair"],
     "repair_audit_post_repair_exact_keys": ["flagged_count", "rerun_flagged_count"],
+    "repair_audit_field_shapes": {
+      "patched_workflow": "plain JSON string equal to /app/workflow/export_report.py; never an object",
+      "pre_repair": "object with pipeline_source_sha256 and pipeline_tokens_present",
+      "post_repair": "object with integer flagged_count and rerun_flagged_count"
+    },
     "processing_steps_contract": "copy repair_audit.processing_steps verbatim, preserving exact strings and order",
     "absolute_policy_sources": {
       "events_default": "/app/data/events.json",
@@ -53,7 +58,7 @@
         "defaults": {
           "output_dir": "/app/output"
         },
-        "output_dir_contract": "all repaired outputs must be written under the provided --output-dir path; never hardcode /app/output when a custom path is supplied",
+        "output_dir_contract": "all five repaired artifacts must be written under the provided --output-dir path; when a custom path is supplied, do not create, rewrite, or update any artifact under /app/output, including /app/output/diagnosis.json",
         "required_output_files": [
           "summary.json",
           "service_matrix.json",
@@ -235,6 +240,11 @@
       "build_flagged"
     ],
     "patched_workflow": "/app/workflow/export_report.py",
+    "patched_workflow_contract": {
+      "type": "string",
+      "exact_value": "/app/workflow/export_report.py",
+      "not_allowed": "object, map, or nested path descriptor"
+    },
     "forbidden_executable_tokens": [
       "event[\"timestamp\"]",
       "level == \"error\""
@@ -257,6 +267,7 @@
     },
     "pre_repair": {
       "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
+      "field_names_contract": "use these names exactly; frozen_source, sha256, source_sha256, or other aliases are invalid",
       "capture_order": "before any write to export_report.py",
       "capture_source": "/app/workflow/.export_report.original",
       "capture_rule": "pipeline_source_sha256 and pipeline_tokens_present are computed from the frozen original snapshot bytes before applying any patch to /app/workflow/export_report.py",
@@ -289,7 +300,8 @@
         "run it again for idempotency verification"
       ],
       "frozen_snapshot_rule": "never modify /app/workflow/.export_report.original",
-      "output_directory_rule": "--output-dir changes where the five output artifacts are written; it does not change the workflow path that must be repaired"
+      "output_directory_rule": "--output-dir changes where the five output artifacts are written; it does not change the workflow path that must be repaired",
+      "custom_output_isolation": "when --output-dir is not /app/output, write no files under /app/output and leave every pre-existing default-output artifact byte-for-byte unchanged"
     },
     "defaults": {
       "input": "/app/data/events.json",
@@ -321,9 +333,11 @@
       "flagged_digest_checksum": "sha256('|'.join(event_digest values in final flagged order)) lowercase 64 hex chars"
     },
     "service_matrix_json": {
-      "description": "Per-service level counts from canonical processed events.",
+      "description": "The JSON root is the service map itself, with no schema_version field, services wrapper, metadata wrapper, or other envelope. Each top-level key is a canonical service name and each value is that service's level-count object.",
+      "top_level_shape": "{canonical_service: {debug: int, error: int, info: int, warn: int}}",
       "service_sort": "ascending alphabetical",
-      "level_key_order": ["debug", "error", "info", "warn"]
+      "level_key_order": ["debug", "error", "info", "warn"],
+      "exact_nested_keys": true
     },
     "flagged_jsonl": {
       "required_fields": [
