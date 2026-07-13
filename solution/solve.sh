@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# The oracle harness mounts this directory; copying the two complete modules
+# keeps the large reference implementation auditable without generated heredocs.
 cp "${SCRIPT_DIR}/log_audit.py" /app/log_audit.py
 cp "${SCRIPT_DIR}/export_report_fixed.py" /app/export_report_fixed.py
 chmod +x /app/log_audit.py

@@ -8,6 +8,8 @@ RUN apt-get update \
         asciinema \
     && rm -rf /var/lib/apt/lists/*
 
+# Fully resolved lock: pytest, its transitive dependencies, and the CTRF plugin
+# are all pinned explicitly; --no-deps prevents build-time dependency resolution.
 COPY requirements.lock /tmp/requirements.lock
 RUN python3 -m pip install --no-cache-dir --no-deps \
         -r /tmp/requirements.lock
