@@ -833,6 +833,7 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
     )
     assert report.exists(), f"diagnose failed (rc={result.returncode}): {result.stderr}"
     data = json.loads(report.read_text())
+    assert set(data) == {"pipeline_status", "issues_found", "input_stats"}
     assert data["pipeline_status"] == "diagnosed"
     original_pipeline = ORIGINAL_PIPELINE.read_text()
     assert "input_stats" in data

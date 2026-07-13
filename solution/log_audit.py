@@ -168,22 +168,6 @@ def build_issues_from_sources(dossier_text: str, original_pipeline: str, spec: d
     return issues
 
 
-def _legacy_issue_entries(issues: list[dict], spec: dict) -> list[dict]:
-    terms_spec = spec["diagnosis_report"]["issues_found_item"]["evidence"]["required_terms_by_issue"]
-    entries: list[dict] = []
-    for issue in issues:
-        issue_id = issue["id"]
-        entries.append(
-            {
-                "issue_id": issue_id,
-                "dossier_quote": issue["evidence"]["dossier_quote"],
-                "evidence_terms": terms_spec[issue_id]["dossier_quote"],
-                "pipeline_terms": terms_spec[issue_id]["pipeline_evidence"],
-            }
-        )
-    return entries
-
-
 def patch_workflow() -> None:
     for candidate in (
         Path(__file__).resolve().parent / "export_report_fixed.py",
@@ -224,9 +208,6 @@ def cmd_diagnose(dossier: Path, report_path: Path) -> None:
     events = load_events()
     issues = build_issues_from_sources(dossier_text, original_pipeline, spec)
     report = build_diagnosis_report("diagnosed", events, issues)
-    report["mode"] = "diagnose"
-    report["issues"] = _legacy_issue_entries(issues, spec)
-    report["snapshot_sha256"] = pipeline_source_sha256(original_pipeline)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2) + "\n")
 
