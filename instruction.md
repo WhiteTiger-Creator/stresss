@@ -8,6 +8,7 @@ Restore `/app/workflow/export_report.py` and build `/app/log_audit.py`. The norm
 - Dependency rules always come from `/app/data/service_dependencies.json`.
 - Resolve those policy paths exactly as absolute defaults, never relative to the event input or output directory.
 - Evidence comes from `/app/incident/export_dossier.md` and frozen `/app/workflow/.export_report.original`. Never alter the frozen file.
+- The repaired workflow and `/app/log_audit.py` must derive results only from operational sources. Their executable code must not read, import, or reference `/tests`, `/solution`, verifier fixture filenames, alternate-test inputs, or expected-output artifacts.
 
 ## CLI and diagnosis
 - Implement `diagnose --dossier PATH --report PATH` and `repair --output-dir PATH`.
