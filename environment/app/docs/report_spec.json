@@ -184,7 +184,30 @@
       ]
     },
     "pipeline_public_interface": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
-    "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details"
+    "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details",
+    "read_in_full": "This file is the complete output contract; truncated reads miss required schema sections. Read it completely before implementing.",
+    "verified_summary_required_fields": [
+      "schema_version",
+      "raw_event_count",
+      "unique_event_ids",
+      "total_events",
+      "level_counts",
+      "services",
+      "flagged_count",
+      "suppressed_excluded_count",
+      "silence_excluded_count",
+      "canonical_fingerprint",
+      "silence_compaction_checksum",
+      "dependency_compaction_checksum",
+      "max_silence_pressure_score",
+      "max_dependency_pressure_score",
+      "max_causal_burst_score",
+      "max_dependency_chain_depth",
+      "max_blast_radius_score",
+      "blast_radius_digest_checksum",
+      "lineage_digest_checksum",
+      "flagged_digest_checksum"
+    ]
   },
   "cli": {
     "path": "/app/log_audit.py",
@@ -385,16 +408,6 @@
     "pipeline_status_note": "pipeline_status values are exact short literals: `diagnosed` after diagnose, `repaired` after repair. Do not substitute descriptive sentences."
   },
   "canonicalization": {
-    "dedupe_by_id": "collapse duplicate event ids keeping the row with highest ts_ms; if ts_ms ties, keep higher severity rank (error>warn>info>debug); if still tied, prefer non-suppressed row; if still tied, keep lexicographically greater normalized message; if still tied, keep lexicographically greater normalized service",
-    "level_normalization": "normalize levels with str(level).strip().lower() before counting and flagging",
-    "service_normalization": "normalize services with str(service).strip().lower() and apply aliases: api-gw->api, api gateway->api, database->db, worker-batch->worker",
-    "ts_ms_normalization": "coerce ts_ms with int(str(ts_ms).strip()); invalid values become 0",
-    "message_normalization": "collapse internal whitespace in message using split/join normalization before tie-breaks and output",
-    "suppressed_normalization": "coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false)",
-    "silence_level_scope_normalization": "silence level_scope uses str(...).strip().lower(); supported values are all, warn, error",
-    "silence_level_scope_filter_rule": "drop silence rows whose normalized level_scope is not one of {all, warn, error} before interval compaction and checksum computation",
-    "silence_window_canonicalization": "silence windows come from /app/data/silence_windows.json; normalize service aliases and level_scope, coerce start_ms/end_ms with int(str(...).strip()), drop rows where end_ms <= start_ms, compact overlap/touch per (service, level_scope)",
-    "silence_compaction_merge_rule": "when compacting sorted silence intervals for a key, merge if next.start_ms <= current.end_ms (touching intervals must merge). An equivalent implementation starts a new interval only when next.start_ms > current.end_ms; the '>' branch does not mean touching intervals remain separate.",
     "silence_compaction_checksum_worked_example": {
       "source": "/app/data/silence_windows.json",
       "notes": [
@@ -405,18 +418,12 @@
       "exact_sha256_payload": "api|warn|1700000008500|1700000008700\ndb|all|1700000005800|1700000006100\nsearch|warn|0|10\nworker|warn|1700000002400|1700000002600\nworker|warn|1700000003900|1700000004050",
       "expected_sha256": "44005a978bedd93d1a55e22d0d37319c1fde585855ac7ee6274230f425af621f"
     },
-    "silence_match_rule": "an event is silenced when start_ms <= ts_ms < end_ms for same normalized service and level_scope in {all, event.level}",
-    "canonical_order": "after dedupe, canonical rows are sorted by ts_ms ascending (stable for ties)",
-    "total_events": "count canonical deduped events (suppressed rows remain in totals)",
-    "flagged_export": "include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, then compute stateful dependency pressure and the single authoritative event_digest for included rows; final sort is defined by flagged_sort_tiebreaks",
-    "silence_pressure_score": "for each included flagged row, compute probe window [ts_ms-90, ts_ms+1) overlap against compacted (service, all) and (service, level) silence windows; score=(all_overlap_ms//25)+(level_overlap_ms//15)",
     "event_digest": "first 10 lowercase SHA1 hex chars of id|ts_ms|level|service|message|silence_pressure_score|dependency_pressure_score|comma_joined_dependency_source_ids|dependency_chain_depth|causal_burst_score|comma_joined_dependency_lineage_ids|lineage_digest|blast_radius_score|comma_joined_blast_radius_services|blast_radius_digest; this is the only event_digest definition",
     "event_digest_worked_example": {
       "exact_utf8_payload": "e1|100|error|api|bad state|2|7|s0|1|12|s0|abcdef123456|4|db,worker|1234567890",
       "expected_first_10_sha1": "b251c997eb",
       "delimiter_contract": "literal pipe between fields, comma inside ordered lists, no trailing delimiter"
-    },
-    "flagged_sort_tiebreaks": "ts_ms desc, severity rank desc, causal_burst_score desc, blast_radius_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc"
+    }
   },
   "repair_audit": {
     "required_keys": [
@@ -615,25 +622,7 @@
       "lag_max_ms",
       "weight"
     ],
-    "canonicalization": "normalize both services with canonical service aliases; int-coerce lag and weight fields; drop empty services, lag_min_ms < 0, lag_max_ms <= lag_min_ms, or weight <= 0; dedupe identical (upstream_service, downstream_service, lag_min_ms, lag_max_ms) rules by maximum weight",
-    "candidate_events": "dependency sources and targets are final unsuppressed, unsilenced warn/error rows; a source is eligible only when source.ts_ms < target.ts_ms",
-    "rule_match": "a canonical rule matches when source.service=upstream_service, target.service=downstream_service, and lag_min_ms <= target.ts_ms-source.ts_ms < lag_max_ms",
-    "evaluation_order": "first build the complete eligible unsuppressed/unsilenced warn+error row set; sort it by (ts_ms ascending, id ascending); initialize and finalize each target's dependency fields in that order, so a finalized earlier row's dependency_pressure_score is available when it acts as a source for any later row",
-    "source_contribution": "for each distinct earlier source event, evaluate every matching canonical rule and retain exactly one contribution: the maximum of weight*severity_rank(source.level)+source.silence_pressure_score+(source.dependency_pressure_score//2); do not sum multiple matching rules for the same source",
-    "strongest_source_selection": "sort contributing sources by contribution descending, source ts_ms descending, source id ascending; retain the first three",
-    "dependency_pressure_score": "sum retained source contributions",
-    "dependency_source_ids": "retained source ids in strongest_source_selection order",
-    "dependency_lineage_evaluation": "after dependency_source_ids are finalized for a target, visit those direct sources in dependency_source_ids order. Each source has already been finalized because evaluation is chronological.",
-    "dependency_lineage_ids": "start empty; for each direct source in order, visit [source.id] followed by that source's dependency_lineage_ids in stored order, append only first occurrences, and stop globally after five ids. Never reorder the resulting list.",
-    "dependency_chain_depth": "0 when dependency_source_ids is empty; otherwise min(1 + max(dependency_chain_depth of the retained direct sources), 6)",
-    "source_burst_rollup": "sum source.causal_burst_score // (rank+2) for retained direct sources, where rank is zero-based dependency_source_ids order (divisors 2,3,4)",
-    "causal_burst_score": "min(dependency_pressure_score + source_burst_rollup + dependency_chain_depth*3, 9999)",
     "lineage_digest": "first 12 lowercase SHA256 hex chars of id|dependency_chain_depth|causal_burst_score|comma_joined_dependency_lineage_ids",
-    "blast_radius_graph": "collapse canonical dependency rules to one directed service edge per (upstream_service,downstream_service), retaining the maximum weight across all lag ranges",
-    "blast_radius_paths": "for each flagged row's service, enumerate every directed path of length one or two. A destination's path capacity is the first-edge weight for length one or min(first-edge weight,second-edge weight) for length two. Exclude paths whose destination is the origin service.",
-    "blast_radius_cycle_and_dedupe": "cycles are bounded by the two-hop limit; for each distinct destination retain only its maximum path capacity across all one-hop and two-hop paths",
-    "blast_radius_services": "distinct retained destinations sorted lexicographically",
-    "blast_radius_score": "sum the retained maximum path capacity for each blast_radius_services destination",
     "blast_radius_digest": "first 10 lowercase SHA1 hex chars of service|comma_joined_blast_radius_services|blast_radius_score",
     "event_digest_reference": "use canonicalization.event_digest; there is no baseline/extended digest variant",
     "worked_example_max_rule_and_top_three": {
@@ -674,7 +663,10 @@
         "c: db/error receives 2*4+0+(16//2)=16 from b; depth 2; lineage [b,a]; burst=min(16+(19//2)+6,9999)=31"
       ],
       "clarification": "b's finalized dependency, depth, lineage, and burst values are used when b contributes to c; rows are not computed independently from an all-zero snapshot"
-    },
-    "blast_radius_origin_exclusion": "The origin service is never its own blast-radius destination: discard one-hop self-loops and any two-hop path that returns to the origin (a->b->a). blast_radius_services never contains the flagged row's own service."
+    }
+  },
+  "semantics_source": {
+    "notes": "This document is the output contract only: CLI shapes, report schemas, exact key sets, digest payload encodings, checksum serialization, and pinned worked examples. It does NOT define how values are derived.",
+    "authority": "Normalization, dedupe tie-breaks, silence scopes/windows/pressure, dependency matching, contribution, lineage, causal burst, blast radius, and flagged ordering were settled during the service review; the authoritative record is the #SVC-ticketed decision notes inside /app/incident/export_dossier.md. Where an early proposal or interim position conflicts with a later decision, the later decision wins."
   }
 }

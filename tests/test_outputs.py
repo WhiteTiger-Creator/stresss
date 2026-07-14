@@ -597,25 +597,30 @@ def flagged_rows() -> list[dict]:
 
 
 def test_cli_exists():
+    """The agent must create the audit CLI at /app/log_audit.py."""
     assert CLI.exists(), f"CLI not found at {CLI}"
 
 
 def test_dossier_is_long_context():
+    """The incident dossier meets the long-context minimum size."""
     assert len(DOSSIER_PATH.read_text().splitlines()) >= 500
 
 
 def test_repair_produces_required_outputs():
+    """A repair run writes every required artifact into the output directory."""
     for path in (SUMMARY_PATH, MATRIX_PATH, FLAGGED_PATH, REPAIR_AUDIT_PATH):
         assert path.exists(), f"missing required output: {path}"
 
 
 def test_diagnosis_schema_repaired(diagnosis: dict):
+    """Repair-mode diagnosis.json carries the repaired key set and 'repaired' status."""
     for key in ("pipeline_status", "issues_found", "input_stats", "verified_summary", "output_paths"):
         assert key in diagnosis
     assert diagnosis["pipeline_status"] == "repaired"
 
 
 def test_output_paths_exact(diagnosis: dict):
+    """Repaired diagnosis.json uses the exact output_paths key names, not aliases."""
     paths = diagnosis["output_paths"]
     assert paths["summary_json"] == str(SUMMARY_PATH)
     assert paths["flagged_jsonl"] == str(FLAGGED_PATH)
@@ -623,17 +628,20 @@ def test_output_paths_exact(diagnosis: dict):
 
 
 def test_issues_found_exactly_six_allowed_ids(diagnosis: dict, expected: dict):
+    """The diagnosis reports every allowed issue id, and no others."""
     assert len(diagnosis["issues_found"]) == 6
     assert {item["id"] for item in diagnosis["issues_found"]} == set(REQUIRED_ISSUE_IDS)
 
 
 def test_issue_item_required_fields(diagnosis: dict):
+    """Each reported issue carries all required fields."""
     for issue in diagnosis["issues_found"]:
         for key in ("id", "severity", "description", "resolution", "evidence"):
             assert key in issue
 
 
 def test_issue_evidence(diagnosis: dict):
+    """Issue evidence meets minimum lengths, required terms, and quotes the frozen snapshot verbatim."""
     original_pipeline = ORIGINAL_PIPELINE.read_text()
     issues = {item["id"]: item for item in diagnosis["issues_found"]}
     for issue_id, terms in ISSUE_EVIDENCE_TERMS.items():
@@ -652,12 +660,14 @@ def test_issue_evidence(diagnosis: dict):
 
 
 def test_dossier_quotes_are_verbatim(diagnosis: dict, dossier_text: str):
+    """Dossier quotes are verbatim excerpts, not paraphrases."""
     for issue in diagnosis["issues_found"]:
         quote = _normalize_ws(issue["evidence"]["dossier_quote"])
         assert quote in dossier_text
 
 
 def test_input_stats(diagnosis: dict, expected: dict):
+    """input_stats reports exactly the required fields derived from the raw events file."""
     stats = diagnosis["input_stats"]
     assert stats["event_count"] == expected["event_count"]
     assert stats["unique_event_ids"] == expected["unique_ids"]
@@ -665,6 +675,7 @@ def test_input_stats(diagnosis: dict, expected: dict):
 
 
 def test_verified_summary_matches_independent_computation(diagnosis: dict, expected: dict):
+    """verified_summary matches a summary computed independently from the inputs."""
     verified = diagnosis["verified_summary"]
     for key in (
         "schema_version",
@@ -697,25 +708,30 @@ def test_verified_summary_matches_independent_computation(diagnosis: dict, expec
 
 
 def test_summary_computed_from_events(summary: dict):
+    """summary.json is derived from the input events rather than hard-coded."""
     assert summary == _compute_summary(_load_events(INPUT_PATH))
 
 
 def test_service_matrix_matches_independent_computation(expected: dict):
+    """service_matrix.json is a flat service-to-level-count map computed from canonical rows."""
     matrix = json.loads(MATRIX_PATH.read_text())
     assert matrix == expected["expected_service_matrix"]
     assert matrix == _build_service_matrix(_canonicalize_events(_load_events(INPUT_PATH)))
 
 
 def test_flagged_computed_from_events(flagged_rows: list[dict]):
+    """flagged.jsonl is derived from the input events rather than hard-coded."""
     assert flagged_rows == _compute_flagged(_load_events(INPUT_PATH))
 
 
 def test_flagged_sorted_descending(flagged_rows: list[dict], expected: dict):
+    """Flagged rows appear in the required final sort order."""
     assert [row["id"] for row in flagged_rows] == expected["expected_flagged_ids_desc"]
     assert [row["ts_ms"] for row in flagged_rows] == expected["expected_flagged_ts_ms_desc"]
 
 
 def test_flagged_levels(flagged_rows: list[dict]):
+    """Flagged rows are warn/error only and carry integer scoring fields."""
     for row in flagged_rows:
         assert row["level"] in FLAGGED_LEVELS
         assert isinstance(row["silence_pressure_score"], int)
@@ -732,6 +748,7 @@ def test_flagged_levels(flagged_rows: list[dict]):
 
 
 def test_flagged_jsonl_compact_format():
+    """flagged.jsonl uses compact JSON separators with no space after the colon."""
     for line in FLAGGED_PATH.read_text().splitlines():
         if not line.strip():
             continue
@@ -741,6 +758,7 @@ def test_flagged_jsonl_compact_format():
 
 
 def test_original_snapshot_preserved(expected: dict):
+    """The frozen pre-repair snapshot is left byte-for-byte untouched."""
     assert ORIGINAL_PIPELINE.exists()
     digest = hashlib.sha256(ORIGINAL_PIPELINE.read_bytes()).hexdigest()
     assert digest == expected["broken_pipeline_sha256"]
@@ -751,6 +769,7 @@ def test_original_snapshot_preserved(expected: dict):
 
 
 def test_broken_snapshot_produces_wrong_export(expected: dict):
+    """The original pipeline genuinely produces wrong output."""
     with tempfile.TemporaryDirectory() as tmp:
         broken = Path(tmp) / "export_report.py"
         out = Path(tmp) / "out"
@@ -765,6 +784,7 @@ def test_broken_snapshot_produces_wrong_export(expected: dict):
 
 
 def test_pipeline_patched():
+    """The patched pipeline parses and drops every forbidden token from executable code."""
     ast.parse(PIPELINE.read_text())
     code = _executable_text(PIPELINE.read_text())
     for token in FORBIDDEN_TOKENS:
@@ -772,6 +792,7 @@ def test_pipeline_patched():
 
 
 def test_repair_audit(diagnosis: dict, expected: dict, summary: dict):
+    """repair_audit.json records pre-repair state before patching and post-repair counts."""
     audit = json.loads(REPAIR_AUDIT_PATH.read_text())
     code = _executable_text(PIPELINE.read_text())
     assert isinstance(audit["patched_workflow"], str)
@@ -798,6 +819,7 @@ def test_repair_audit(diagnosis: dict, expected: dict, summary: dict):
 
 
 def test_pipeline_reruns_idempotently(summary: dict, flagged_rows: list[dict], tmp_path_factory):
+    """Rerunning the patched pipeline reproduces identical output."""
     rerun_dir = tmp_path_factory.mktemp("rerun")
     result = _run_pipeline(output_dir=rerun_dir)
     assert result.returncode == 0, result.stderr
@@ -808,6 +830,7 @@ def test_pipeline_reruns_idempotently(summary: dict, flagged_rows: list[dict], t
 
 
 def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_factory):
+    """The patched pipeline computes correct results for an unseen input file."""
     alt_dir = tmp_path_factory.mktemp("alt")
     alt_input = Path(expected["alternate_input"])
     result = _run_pipeline(input_path=alt_input, output_dir=alt_dir)
@@ -839,6 +862,7 @@ def test_patched_pipeline_supports_alternate_input(expected: dict, tmp_path_fact
 
 
 def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
+    """Diagnose mode writes a 'diagnosed' report and omits repair-only keys."""
     report = OUTPUT_DIR / "diagnosis_redundant.json"
     if report.exists():
         report.unlink()
@@ -882,6 +906,7 @@ def test_cli_diagnose_subcommand(expected: dict, dossier_text: str):
 def test_repair_repatches_reset_workflow_with_custom_output_dir(
     tmp_path_factory, expected: dict
 ):
+    """Repair reinstalls the workflow after reset and isolates outputs under a custom directory."""
     custom_dir = tmp_path_factory.mktemp("custom_output")
     current = PIPELINE.read_text()
     default_artifacts = (
@@ -921,6 +946,7 @@ def test_repair_repatches_reset_workflow_with_custom_output_dir(
 
 
 def test_service_and_suppressed_normalization_edge_cases(tmp_path_factory):
+    """Service aliases and suppressed-string coercion are applied during canonicalization."""
     events = [
         {
             "id": "s1",
@@ -964,6 +990,7 @@ def test_service_and_suppressed_normalization_edge_cases(tmp_path_factory):
 
 
 def test_dedupe_tie_break_on_level_then_message(tmp_path_factory):
+    """On a ts_ms tie, dedupe prefers higher severity, then the larger normalized message."""
     events = [
         {
             "id": "d1",
@@ -1010,6 +1037,7 @@ def test_dedupe_tie_break_on_level_then_message(tmp_path_factory):
 
 
 def test_ts_ms_normalization_and_invalid_fallback(tmp_path_factory):
+    """ts_ms values are trimmed and coerced; unparseable values fall back without dropping rows."""
     events = [
         {
             "id": "t1",
@@ -1040,6 +1068,7 @@ def test_ts_ms_normalization_and_invalid_fallback(tmp_path_factory):
 
 
 def test_service_alias_and_dedupe_tie_break_prefers_non_suppressed_then_service(tmp_path_factory):
+    """On a full tie, dedupe prefers non-suppressed rows, then the larger normalized service."""
     events = [
         {
             "id": "a1",
@@ -1090,6 +1119,7 @@ def test_service_alias_and_dedupe_tie_break_prefers_non_suppressed_then_service(
 
 
 def test_flagged_sort_tie_break_on_severity_then_id(tmp_path_factory):
+    """Flagged ties fall back to severity rank, then ascending id."""
     events = [
         {"id": "z2", "ts_ms": 500, "level": "warn", "service": "api", "message": "warn row"},
         {"id": "z1", "ts_ms": 500, "level": "error", "service": "api", "message": "error row"},
@@ -1107,6 +1137,7 @@ def test_flagged_sort_tie_break_on_severity_then_id(tmp_path_factory):
 
 
 def test_flagged_sort_tie_break_on_silence_pressure_score(tmp_path_factory):
+    """When earlier keys tie, higher silence pressure ranks earlier."""
     original_silence = SILENCE_PATH.read_text()
     try:
         silence_rows = [
@@ -1134,6 +1165,7 @@ def test_flagged_sort_tie_break_on_silence_pressure_score(tmp_path_factory):
 
 
 def test_canonical_fingerprint_uses_ts_ms_ascending_canonical_order(tmp_path_factory):
+    """The canonical fingerprint hashes rows in ascending ts_ms order."""
     events = [
         {"id": "f1", "ts_ms": 500, "level": "warn", "service": "api", "message": "late"},
         {"id": "f2", "ts_ms": 100, "level": "info", "service": "api", "message": "early"},
@@ -1159,6 +1191,7 @@ def test_canonical_fingerprint_uses_ts_ms_ascending_canonical_order(tmp_path_fac
 
 
 def test_pipeline_does_not_reference_test_or_solution_artifacts():
+    """Agent-produced sources never reference verifier or solution artifacts."""
     pipeline_code = _executable_text(PIPELINE.read_text())
     cli_code = _executable_text(CLI.read_text())
     forbidden = ["/tests", "expected_summary.json", "fixtures/alt_events.json", "/solution/"]
@@ -1168,6 +1201,7 @@ def test_pipeline_does_not_reference_test_or_solution_artifacts():
 
 
 def test_silence_source_path_affects_output(tmp_path_factory):
+    """Silence windows are read from their fixed absolute path and affect results."""
     original_silence = SILENCE_PATH.read_text()
     try:
         baseline_dir = tmp_path_factory.mktemp("silence_base")
@@ -1261,6 +1295,7 @@ def test_evidence_term_quick_checklist_matches_authoritative_contract():
 
 
 def test_dependency_source_path_affects_output(tmp_path_factory):
+    """Dependency rules are read from their fixed absolute path and affect results."""
     original_dependencies = DEPENDENCY_PATH.read_text()
     try:
         baseline_dir = tmp_path_factory.mktemp("dependency_base")

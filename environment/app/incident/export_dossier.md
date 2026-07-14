@@ -4,6 +4,9 @@ Pelagia Margin Platform Ops — internal investigation (2025-11 through 2026-03)
 ## Executive Summary
 Pelagia Margin service-log export has been unstable since late 2025. Early triage blamed dashboard cache lag and suggested CSV fallback — those notes are archived below and may contradict later findings. For acceptance behavior, cross-check analyst notes embedded in bridge-shift records against bundled events.json — early triage sections above are not authoritative.
 
+
+How the export is *meant* to behave — normalization, dedupe and its tie-breaks, silence scopes, windows and pressure, dependency matching, contribution and lineage, causal burst, blast radius, and the flagged ordering — was settled incrementally during the service review, and those #SVC-ticketed decisions live in the bridge shift log below, not in any single summary. The 2025-11 triage proposals were partly reversed, and several 2026-01 interim positions were revised again in 2026-03; on every point the latest decision governs. `/app/docs/report_spec.json` remains the output contract: schemas, exact key sets, digest payload encodings, checksum serialization, and the pinned worked examples.
+
 ## Investigation Navigation
 The authoritative evidence is in quoted `Incident note` records. Search this archive for `ts_ms`, `ascending`, `WARN`, `duplicate event ids`, `suppressed rows`, and `level ==` rather than treating repeated bridge-shift telemetry or vendor-email archives as requirements.
 
@@ -63,6 +66,7 @@ Shift lead noted routine telemetry drift on cache during window 11. Pager noise 
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0012 — auth lane
+> **Triage proposal (2025-11-04 - #SVC-2807)** Tomas: events whose ts_ms will not parse as an integer should be dropped from the export entirely *(Superseded — reversed in the 2026-03 service review; see the matching decision entry.)*
 Shift lead noted routine telemetry drift on auth during window 12. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -107,6 +111,7 @@ Shift lead noted routine telemetry drift on search during window 22. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0023 — notify lane
+> **Triage proposal (2025-11-07 - #SVC-2811)** Tomas: when an event id repeats, keep the first row encountered and discard the rest, regardless of ts_ms or level *(Superseded — reversed in the 2026-03 service review; see the matching decision entry.)*
 Shift lead noted routine telemetry drift on notify during window 23. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -151,6 +156,7 @@ Shift lead noted routine telemetry drift on db during window 33. Pager noise sta
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0034 — worker lane
+> **Triage proposal (2025-11-10 - #SVC-2815)** Anders: silence rows with unrecognized level_scope values should be normalized to scope 'all' so no window is lost *(Superseded — reversed in the 2026-03 service review; see the matching decision entry.)*
 Shift lead noted routine telemetry drift on worker during window 34. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -195,6 +201,7 @@ Shift lead noted routine telemetry drift on auth during window 44. Pager noise s
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0045 — billing lane
+> **Triage proposal (2025-11-13 - #SVC-2819)** Anders: silence intervals that merely touch should remain separate segments; only strict overlap merges *(Superseded — reversed in the 2026-03 service review; see the matching decision entry.)*
 Shift lead noted routine telemetry drift on billing during window 45. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -239,6 +246,7 @@ Shift lead noted routine telemetry drift on notify during window 55. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0056 — api lane
+> **Triage proposal (2025-11-16 - #SVC-2823)** Tomas: causal burst should count same-service events directly rather than rolling up finalized source scores *(Superseded — reversed in the 2026-03 service review; see the matching decision entry.)*
 Shift lead noted routine telemetry drift on api during window 56. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -283,6 +291,7 @@ Shift lead noted routine telemetry drift on worker during window 66. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0067 — cache lane
+> **Triage proposal (2025-11-19 - #SVC-2827)** Anders: a service belongs in its own blast radius whenever a two-hop path returns to it *(Superseded — reversed in the 2026-03 service review; see the matching decision entry.)*
 Shift lead noted routine telemetry drift on cache during window 67. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -338,6 +347,7 @@ Shift lead noted routine telemetry drift on notify during window 79. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0080 — api lane
+> **Ops decision (2026-01-06 - #SVC-2954)** Wei: ts_ms coercion runs int() directly on the raw value with no strip; unparseable rows are logged and skipped. *(Revised — see the 2026-03 decision log.)*
 Shift lead noted routine telemetry drift on api during window 80. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -366,6 +376,7 @@ Shift lead noted routine telemetry drift on search during window 86. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0087 — notify lane
+> **Ops decision (2026-01-09 - #SVC-2958)** Wei: on a ts_ms tie during dedupe, prefer the non-suppressed row first and compare severity rank only afterwards. *(Revised — see the 2026-03 decision log.)*
 Shift lead noted routine telemetry drift on notify during window 87. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -394,6 +405,7 @@ Shift lead noted routine telemetry drift on billing during window 93. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0094 — search lane
+> **Ops decision (2026-01-12 - #SVC-2961)** Dana: silence pressure divisors are 20 for all-scope overlap and 10 for level-scope overlap. *(Revised — see the 2026-03 decision log.)*
 Shift lead noted routine telemetry drift on search during window 94. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -422,6 +434,7 @@ Shift lead noted routine telemetry drift on auth during window 100. Pager noise 
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0101 — billing lane
+> **Ops decision (2026-01-15 - #SVC-2965)** Dana: retain only the strongest two sources per finalized candidate. *(Revised — see the 2026-03 decision log.)*
 Shift lead noted routine telemetry drift on billing during window 101. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -450,6 +463,7 @@ Shift lead noted routine telemetry drift on cache during window 107. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0108 — auth lane
+> **Ops decision (2026-01-18 - #SVC-2968)** Ravi: source burst rollup divides every retained source contribution by 2, with no rank-based divisors. *(Revised — see the 2026-03 decision log.)*
 Shift lead noted routine telemetry drift on auth during window 108. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -501,6 +515,7 @@ Shift lead noted routine telemetry drift on notify during window 119. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0120 — api lane
+> **Ops decision (2026-03-02 - #SVC-3102)** Ravi: normalization: level — normalize levels with str(level).strip().lower() before counting and flagging; service — normalize services with str(service).strip().lower() and apply aliases: api-gw->api, api gateway->api, database->db, worker-batch->worker; ts_ms — coerce ts_ms with int(str(ts_ms).strip()); invalid values become 0, and rows that still fail to parse are KEPT with the fallback, not dropped (supersedes #SVC-2807 and revises the interim position in #SVC-2954); message — collapse internal whitespace in message using split/join normalization before tie-breaks and output; suppressed — coerce suppressed booleans from bools and strings (true/1/yes => true, false/0/no/empty => false).
 Shift lead noted routine telemetry drift on api during window 120. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -561,6 +576,7 @@ Shift lead noted routine telemetry drift on search during window 134. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0135 — notify lane
+> **Ops decision (2026-03-02 - #SVC-3103)** Ravi: deduplication: collapse duplicate event ids keeping the row with highest ts_ms; if ts_ms ties, keep higher severity rank (error>warn>info>debug); if still tied, prefer non-suppressed row; if still tied, keep lexicographically greater normalized message; if still tied, keep lexicographically greater normalized service. This supersedes #SVC-2811 and revises the ordering in #SVC-2958.
 Shift lead noted routine telemetry drift on notify during window 135. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -621,6 +637,7 @@ Shift lead noted routine telemetry drift on billing during window 149. Pager noi
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0150 — search lane
+> **Ops decision (2026-03-03 - #SVC-3105)** Wei: silence scope: silence level_scope uses str(...).strip().lower(); supported values are all, warn, error. Filter rule: drop silence rows whose normalized level_scope is not one of {all, warn, error} before interval compaction and checksum computation This supersedes #SVC-2815.
 Shift lead noted routine telemetry drift on search during window 150. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -684,6 +701,7 @@ Shift lead noted routine telemetry drift on auth during window 164. Pager noise 
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0165 — billing lane
+> **Ops decision (2026-03-03 - #SVC-3106)** Wei: silence windows: silence windows come from /app/data/silence_windows.json; normalize service aliases and level_scope, coerce start_ms/end_ms with int(str(...).strip()), drop rows where end_ms <= start_ms, compact overlap/touch per (service, level_scope). Merge rule: when compacting sorted silence intervals for a key, merge if next.start_ms <= current.end_ms (touching intervals must merge). An equivalent implementation starts a new interval only when next.start_ms > current.end_ms; the '>' branch does not mean touching intervals remain separate. This supersedes #SVC-2819.
 Shift lead noted routine telemetry drift on billing during window 165. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -744,6 +762,7 @@ Shift lead noted routine telemetry drift on cache during window 179. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0180 — auth lane
+> **Ops decision (2026-03-04 - #SVC-3108)** Dana: silence matching: an event is silenced when start_ms <= ts_ms < end_ms for same normalized service and level_scope in {all, event.level}.
 Shift lead noted routine telemetry drift on auth during window 180. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -807,6 +826,7 @@ Shift lead noted routine telemetry drift on worker during window 194. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0195 — cache lane
+> **Ops decision (2026-03-04 - #SVC-3109)** Dana: silence pressure: for each included flagged row, compute probe window [ts_ms-90, ts_ms+1) overlap against compacted (service, all) and (service, level) silence windows; score=(all_overlap_ms//25)+(level_overlap_ms//15). The 25/15 divisors are final and revise the interim 20/10 pair in #SVC-2961.
 Shift lead noted routine telemetry drift on cache during window 195. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -867,6 +887,7 @@ Shift lead noted routine telemetry drift on db during window 209. Pager noise st
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0210 — worker lane
+> **Ops decision (2026-03-05 - #SVC-3111)** Ravi: canonical order: after dedupe, canonical rows are sorted by ts_ms ascending (stable for ties). total_events: count canonical deduped events (suppressed rows remain in totals).
 Shift lead noted routine telemetry drift on worker during window 210. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -927,6 +948,7 @@ Shift lead noted routine telemetry drift on api during window 224. Pager noise s
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0225 — db lane
+> **Ops decision (2026-03-05 - #SVC-3112)** Ravi: flagged export: include warn and error only, exclude suppressed=true, exclude silenced rows by silence_match_rule, then compute stateful dependency pressure and the single authoritative event_digest for included rows; final sort is defined by flagged_sort_tiebreaks.
 Shift lead noted routine telemetry drift on db during window 225. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -990,6 +1012,7 @@ Shift lead noted routine telemetry drift on notify during window 239. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0240 — api lane
+> **Ops decision (2026-03-06 - #SVC-3114)** Wei: dependency rules: normalize both services with canonical service aliases; int-coerce lag and weight fields; drop empty services, lag_min_ms < 0, lag_max_ms <= lag_min_ms, or weight <= 0; dedupe identical (upstream_service, downstream_service, lag_min_ms, lag_max_ms) rules by maximum weight.
 Shift lead noted routine telemetry drift on api during window 240. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1050,6 +1073,7 @@ Shift lead noted routine telemetry drift on search during window 254. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0255 — notify lane
+> **Ops decision (2026-03-06 - #SVC-3115)** Wei: dependency candidates and matching: candidate events — dependency sources and targets are final unsuppressed, unsilenced warn/error rows; a source is eligible only when source.ts_ms < target.ts_ms. Rule match — a canonical rule matches when source.service=upstream_service, target.service=downstream_service, and lag_min_ms <= target.ts_ms-source.ts_ms < lag_max_ms. Evaluation order — first build the complete eligible unsuppressed/unsilenced warn+error row set; sort it by (ts_ms ascending, id ascending); initialize and finalize each target's dependency fields in that order, so a finalized earlier row's dependency_pressure_score is available when it acts as a source for any later row.
 Shift lead noted routine telemetry drift on notify during window 255. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1110,6 +1134,7 @@ Shift lead noted routine telemetry drift on billing during window 269. Pager noi
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0270 — search lane
+> **Ops decision (2026-03-07 - #SVC-3117)** Dana: source contribution: for each distinct earlier source event, evaluate every matching canonical rule and retain exactly one contribution: the maximum of weight*severity_rank(source.level)+source.silence_pressure_score+(source.dependency_pressure_score//2); do not sum multiple matching rules for the same source. Strongest-source selection: sort contributing sources by contribution descending, source ts_ms descending, source id ascending; retain the first three. This revises the two-source cap in #SVC-2965.
 Shift lead noted routine telemetry drift on search during window 270. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1172,6 +1197,7 @@ Historical CSV migration threads from 2023 are archived and non-authoritative fo
 Shift lead noted routine telemetry drift on auth during window 284. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 ### Bridge shift 0285 — billing lane
+> **Ops decision (2026-03-07 - #SVC-3118)** Dana: dependency pressure and sources: dependency_pressure_score — sum retained source contributions. dependency_source_ids — retained source ids in strongest_source_selection order.
 Shift lead noted routine telemetry drift on billing during window 285. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1232,6 +1258,7 @@ Shift lead noted routine telemetry drift on cache during window 299. Pager noise
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0300 — auth lane
+> **Ops decision (2026-03-08 - #SVC-3120)** Ravi: lineage: after dependency_source_ids are finalized for a target, visit those direct sources in dependency_source_ids order. Each source has already been finalized because evaluation is chronological. dependency_lineage_ids — start empty; for each direct source in order, visit [source.id] followed by that source's dependency_lineage_ids in stored order, append only first occurrences, and stop globally after five ids. Never reorder the resulting list.. dependency_chain_depth — 0 when dependency_source_ids is empty; otherwise min(1 + max(dependency_chain_depth of the retained direct sources), 6).
 Shift lead noted routine telemetry drift on auth during window 300. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1295,6 +1322,7 @@ Shift lead noted routine telemetry drift on worker during window 314. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0315 — cache lane
+> **Ops decision (2026-03-08 - #SVC-3121)** Ravi: causal burst: source_burst_rollup — sum source.causal_burst_score // (rank+2) for retained direct sources, where rank is zero-based dependency_source_ids order (divisors 2,3,4). causal_burst_score — min(dependency_pressure_score + source_burst_rollup + dependency_chain_depth*3, 9999). This supersedes #SVC-2823 and revises the divisor scheme in #SVC-2968.
 Shift lead noted routine telemetry drift on cache during window 315. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1355,6 +1383,7 @@ Shift lead noted routine telemetry drift on db during window 329. Pager noise st
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0330 — worker lane
+> **Ops decision (2026-03-09 - #SVC-3123)** Wei: blast radius graph: collapse canonical dependency rules to one directed service edge per (upstream_service,downstream_service), retaining the maximum weight across all lag ranges. Paths: for each flagged row's service, enumerate every directed path of length one or two. A destination's path capacity is the first-edge weight for length one or min(first-edge weight,second-edge weight) for length two. Exclude paths whose destination is the origin service.. Cycles and dedupe: cycles are bounded by the two-hop limit; for each distinct destination retain only its maximum path capacity across all one-hop and two-hop paths.
 Shift lead noted routine telemetry drift on worker during window 330. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1418,6 +1447,7 @@ Shift lead noted routine telemetry drift on api during window 344. Pager noise s
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0345 — db lane
+> **Ops decision (2026-03-09 - #SVC-3124)** Wei: blast radius outputs: The origin service is never its own blast-radius destination: discard one-hop self-loops and any two-hop path that returns to the origin (a->b->a). blast_radius_services never contains the flagged row's own service. blast_radius_services — distinct retained destinations sorted lexicographically. blast_radius_score — sum the retained maximum path capacity for each blast_radius_services destination. This supersedes #SVC-2827.
 Shift lead noted routine telemetry drift on db during window 345. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -1478,6 +1508,7 @@ Shift lead noted routine telemetry drift on notify during window 359. Pager nois
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
 ### Bridge shift 0360 — api lane
+> **Ops decision (2026-03-10 - #SVC-3126)** Dana: flagged ordering: ts_ms desc, severity rank desc, causal_burst_score desc, blast_radius_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc.
 Shift lead noted routine telemetry drift on api during window 360. Pager noise stayed within SLO; export dashboard lag was attributed to stale cache refresh, not the service-log pipeline. Follow-up ticket closed as monitoring-only.
 Historical CSV migration threads from 2023 are archived and non-authoritative for current JSON export acceptance. Analysts should cross-check against bundled events.json and report_spec.json rather than chat excerpts.
 
@@ -2328,3 +2359,261 @@ Q3 2029 review item 58: export latency within budget; no pipeline change request
 Q4 2029 review item 59: export latency within budget; no pipeline change requested.
 Q1 2020 review item 60: export latency within budget; no pipeline change requested.
 
+## Bridge shift addendum (2026-Q1)
+Late-quarter shifts appended after the primary timeline was frozen. Routine entries only; any #SVC-ticketed notes elsewhere in this dossier take precedence for export behavior.
+
+### Bridge shift 0401 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0401. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0402 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0402. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0403 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0403. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0404 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0404. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0405 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0405. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0406 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0406. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0407 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0407. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0408 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0408. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0409 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0409. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0410 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0410. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0411 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0411. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0412 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0412. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0413 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0413. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0414 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0414. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0415 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0415. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0416 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0416. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0417 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0417. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0418 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0418. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0419 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0419. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0420 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0420. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0421 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0421. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0422 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0422. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0423 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0423. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0424 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0424. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0425 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0425. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0426 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0426. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0427 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0427. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0428 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0428. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0429 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0429. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0430 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0430. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0431 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0431. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0432 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0432. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0433 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0433. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0434 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0434. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0435 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0435. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0436 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0436. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0437 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0437. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0438 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0438. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0439 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0439. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0440 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0440. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0441 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0441. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0442 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0442. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0443 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0443. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0444 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0444. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0445 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0445. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0446 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0446. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0447 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0447. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0448 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0448. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0449 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0449. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0450 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0450. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0451 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0451. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0452 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0452. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0453 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0453. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0454 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0454. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0455 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0455. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0456 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0456. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0457 — worker lane
+Shift lead logged routine export drift observations for worker (west) during bridge window 0457. Dashboard tiles for export volume lagged during index refresh; attributed to cache staleness, not the export pipeline.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0458 — cache lane
+Shift lead logged routine export drift observations for cache (north) during bridge window 0458. Bridge reviewed stale runbook links for this lane; owners pinged to refresh them before the next replay drill.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0459 — auth lane
+Shift lead logged routine export drift observations for auth (central) during bridge window 0459. Synthetic event injection verified pager delivery for secondary responders in this region.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0460 — billing lane
+Shift lead logged routine export drift observations for billing (east) during bridge window 0460. Rotation swap requested and approved; no change to export parameters was made outside the service review.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0461 — search lane
+Shift lead logged routine export drift observations for search (west) during bridge window 0461. Noise review: repeated alerts traced to a flapping health probe, muted at the source with no export change.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0462 — api lane
+Shift lead logged routine export drift observations for api (north) during bridge window 0462. Quarterly access recertification touched this lane; no export-relevant configuration changed.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0463 — edge lane
+Shift lead logged routine export drift observations for edge (central) during bridge window 0463. Vendor webhook retried twice before delivery; within contractual retry budget, no action for the export.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
+
+### Bridge shift 0464 — db lane
+Shift lead logged routine export drift observations for db (east) during bridge window 0464. Replay drill completed within SLO; flagged-queue acknowledgment latency held under the review target for this lane.
+Historical CSV export threads for this shift are archived and non-authoritative for the current JSON acceptance. Analysts should reconcile behavior questions against the #SVC-ticketed decision notes rather than chat excerpts.
