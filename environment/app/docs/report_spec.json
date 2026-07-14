@@ -1,40 +1,161 @@
 {
-  "title": "Service Log Export — Diagnosis & Report Spec",
+  "title": "Service Log Export \u2014 Diagnosis & Report Spec",
   "contract_version": "4.3",
   "known_issues": [
-    {"id": "wrong_timestamp_field"},
-    {"id": "severity_filter"},
-    {"id": "sort_order"},
-    {"id": "level_normalization"},
-    {"id": "dedupe_policy"},
-    {"id": "suppressed_filter"}
+    {
+      "id": "wrong_timestamp_field"
+    },
+    {
+      "id": "severity_filter"
+    },
+    {
+      "id": "sort_order"
+    },
+    {
+      "id": "level_normalization"
+    },
+    {
+      "id": "dedupe_policy"
+    },
+    {
+      "id": "suppressed_filter"
+    }
   ],
   "quick_contract_index": {
-    "required_issue_ids": ["wrong_timestamp_field", "severity_filter", "sort_order", "level_normalization", "dedupe_policy", "suppressed_filter"],
+    "required_issue_ids": [
+      "wrong_timestamp_field",
+      "severity_filter",
+      "sort_order",
+      "level_normalization",
+      "dedupe_policy",
+      "suppressed_filter"
+    ],
     "issue_item_shape": {
-      "top_level": ["id", "severity", "description", "resolution", "evidence"],
-      "nested_evidence": ["dossier_quote", "pipeline_evidence", "repair_action"],
-      "minimum_lengths": [30, 10, 10]
+      "top_level": [
+        "id",
+        "severity",
+        "description",
+        "resolution",
+        "evidence"
+      ],
+      "nested_evidence": [
+        "dossier_quote",
+        "pipeline_evidence",
+        "repair_action"
+      ],
+      "minimum_lengths": [
+        30,
+        10,
+        10
+      ]
     },
     "evidence_term_checklist": {
-      "field_order": ["dossier_quote", "pipeline_evidence", "repair_action"],
-      "wrong_timestamp_field": [["ts_ms"], ["event[\"timestamp\"]"], ["ts_ms"]],
-      "severity_filter": [["warn"], ["level == \"error\""], ["warn"]],
-      "sort_order": [["ascending", "descending"], ["sort", "ts_ms"], ["descending"]],
-      "level_normalization": [["WARN", "lowercase"], ["level"], ["lower"]],
-      "dedupe_policy": [["duplicate", "ts_ms"], ["for event in events"], ["duplicate"]],
-      "suppressed_filter": [["suppressed", "excluded"], ["suppressed"], ["suppressed"]],
+      "field_order": [
+        "dossier_quote",
+        "pipeline_evidence",
+        "repair_action"
+      ],
+      "wrong_timestamp_field": [
+        [
+          "ts_ms"
+        ],
+        [
+          "event[\"timestamp\"]"
+        ],
+        [
+          "ts_ms"
+        ]
+      ],
+      "severity_filter": [
+        [
+          "warn"
+        ],
+        [
+          "level == \"error\""
+        ],
+        [
+          "warn"
+        ]
+      ],
+      "sort_order": [
+        [
+          "ascending",
+          "descending"
+        ],
+        [
+          "sort",
+          "ts_ms"
+        ],
+        [
+          "descending"
+        ]
+      ],
+      "level_normalization": [
+        [
+          "WARN",
+          "lowercase"
+        ],
+        [
+          "level"
+        ],
+        [
+          "lower"
+        ]
+      ],
+      "dedupe_policy": [
+        [
+          "duplicate",
+          "ts_ms"
+        ],
+        [
+          "for event in events"
+        ],
+        [
+          "duplicate"
+        ]
+      ],
+      "suppressed_filter": [
+        [
+          "suppressed",
+          "excluded"
+        ],
+        [
+          "suppressed"
+        ],
+        [
+          "suppressed"
+        ]
+      ],
       "matching": "dossier_quote and repair_action terms are case-insensitive; pipeline_evidence terms are case-sensitive and the complete evidence value must be a literal substring of the frozen source"
     },
-    "diagnose_input_stats_exact_keys": ["event_count", "unique_event_ids", "services"],
-    "repair_output_files": ["summary.json", "service_matrix.json", "flagged.jsonl", "diagnosis.json", "repair_audit.json"],
+    "diagnose_input_stats_exact_keys": [
+      "event_count",
+      "unique_event_ids",
+      "services"
+    ],
+    "repair_output_files": [
+      "summary.json",
+      "service_matrix.json",
+      "flagged.jsonl",
+      "diagnosis.json",
+      "repair_audit.json"
+    ],
     "repair_output_path_keys": {
       "summary_json": "<output-dir>/summary.json",
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
       "service_matrix_json": "<output-dir>/service_matrix.json"
     },
-    "repair_audit_exact_keys": ["patched_workflow", "processing_steps", "removed_tokens", "pre_repair", "post_repair"],
-    "repair_audit_post_repair_exact_keys": ["flagged_count", "rerun_flagged_count"],
+    "repair_audit_exact_keys": [
+      "patched_workflow",
+      "processing_steps",
+      "removed_tokens",
+      "pre_repair",
+      "post_repair"
+    ],
+    "repair_audit_post_repair_exact_keys": [
+      "flagged_count",
+      "rerun_flagged_count"
+    ],
     "repair_audit_field_shapes": {
       "patched_workflow": "plain JSON string equal to /app/workflow/export_report.py; never an object",
       "pre_repair": "object with pipeline_source_sha256 and pipeline_tokens_present",
@@ -48,9 +169,19 @@
       "resolution": "--input replaces only events_default; policy paths remain absolute and are never resolved relative to --input or --output-dir"
     },
     "silence_scope_allowlist": {
-      "allowed": ["all", "warn", "error"],
-      "drop_before": ["interval_compaction", "silence_compaction_checksum"],
-      "explicitly_invalid_examples": ["debug", "info"]
+      "allowed": [
+        "all",
+        "warn",
+        "error"
+      ],
+      "drop_before": [
+        "interval_compaction",
+        "silence_compaction_checksum"
+      ],
+      "explicitly_invalid_examples": [
+        "debug",
+        "info"
+      ]
     },
     "pipeline_public_interface": "python3 /app/workflow/export_report.py --input PATH --output-dir PATH",
     "internal_python_api": "not prescribed; helper function names, parameters, and return values are implementation details"
@@ -65,7 +196,10 @@
           "report": "/app/output/diagnosis.json"
         },
         "must_include_all_allowed_ids": true,
-        "must_not_include_repaired_keys": ["verified_summary", "output_paths"],
+        "must_not_include_repaired_keys": [
+          "verified_summary",
+          "output_paths"
+        ],
         "input_events_path": "/app/data/events.json"
       },
       "repair": {
@@ -85,7 +219,11 @@
     }
   },
   "diagnosis_report": {
-    "required_keys_diagnosed": ["pipeline_status", "issues_found", "input_stats"],
+    "required_keys_diagnosed": [
+      "pipeline_status",
+      "issues_found",
+      "input_stats"
+    ],
     "required_keys_repaired": [
       "pipeline_status",
       "issues_found",
@@ -96,7 +234,13 @@
     "pipeline_status_diagnosed": "diagnosed",
     "pipeline_status_repaired": "repaired",
     "issues_found_item": {
-      "required_fields": ["id", "severity", "description", "resolution", "evidence"],
+      "required_fields": [
+        "id",
+        "severity",
+        "description",
+        "resolution",
+        "evidence"
+      ],
       "allowed_ids": [
         "wrong_timestamp_field",
         "severity_filter",
@@ -106,7 +250,11 @@
         "suppressed_filter"
       ],
       "evidence": {
-        "required_fields": ["dossier_quote", "pipeline_evidence", "repair_action"],
+        "required_fields": [
+          "dossier_quote",
+          "pipeline_evidence",
+          "repair_action"
+        ],
         "pipeline_evidence_source": "/app/workflow/.export_report.original",
         "pipeline_evidence_format": "literal substring excerpt from frozen original workflow source",
         "dossier_quote_format": "verbatim excerpt from /app/incident/export_dossier.md (whitespace-normalized match)",
@@ -118,40 +266,85 @@
         "term_matching": "dossier_quote and repair_action term checks are case-insensitive; pipeline_evidence term checks are case-sensitive literal substrings",
         "required_terms_by_issue": {
           "wrong_timestamp_field": {
-            "dossier_quote": ["ts_ms"],
-            "pipeline_evidence": ["event[\"timestamp\"]"],
-            "repair_action": ["ts_ms"]
+            "dossier_quote": [
+              "ts_ms"
+            ],
+            "pipeline_evidence": [
+              "event[\"timestamp\"]"
+            ],
+            "repair_action": [
+              "ts_ms"
+            ]
           },
           "severity_filter": {
-            "dossier_quote": ["warn"],
-            "pipeline_evidence": ["level == \"error\""],
-            "repair_action": ["warn"]
+            "dossier_quote": [
+              "warn"
+            ],
+            "pipeline_evidence": [
+              "level == \"error\""
+            ],
+            "repair_action": [
+              "warn"
+            ]
           },
           "sort_order": {
-            "dossier_quote": ["ascending", "descending"],
-            "pipeline_evidence": ["sort", "ts_ms"],
-            "repair_action": ["descending"]
+            "dossier_quote": [
+              "ascending",
+              "descending"
+            ],
+            "pipeline_evidence": [
+              "sort",
+              "ts_ms"
+            ],
+            "repair_action": [
+              "descending"
+            ]
           },
           "level_normalization": {
-            "dossier_quote": ["WARN", "lowercase"],
-            "pipeline_evidence": ["level"],
-            "repair_action": ["lower"]
+            "dossier_quote": [
+              "WARN",
+              "lowercase"
+            ],
+            "pipeline_evidence": [
+              "level"
+            ],
+            "repair_action": [
+              "lower"
+            ]
           },
           "dedupe_policy": {
-            "dossier_quote": ["duplicate", "ts_ms"],
-            "pipeline_evidence": ["for event in events"],
-            "repair_action": ["duplicate"]
+            "dossier_quote": [
+              "duplicate",
+              "ts_ms"
+            ],
+            "pipeline_evidence": [
+              "for event in events"
+            ],
+            "repair_action": [
+              "duplicate"
+            ]
           },
           "suppressed_filter": {
-            "dossier_quote": ["suppressed", "excluded"],
-            "pipeline_evidence": ["suppressed"],
-            "repair_action": ["suppressed"]
+            "dossier_quote": [
+              "suppressed",
+              "excluded"
+            ],
+            "pipeline_evidence": [
+              "suppressed"
+            ],
+            "repair_action": [
+              "suppressed"
+            ]
           }
         }
       }
     },
     "input_stats": {
-      "required_fields": ["event_count", "unique_event_ids", "services"],
+      "required_fields": [
+        "event_count",
+        "unique_event_ids",
+        "services"
+      ],
       "exact_key_names": "input_stats keys must be exactly event_count, unique_event_ids, services",
       "services_sort": "ascending alphabetical",
       "services_normalization": "services must use the same canonicalization as canonicalization.service_normalization (strip/lower + aliases); raw unnormalized spellings are invalid",
@@ -187,7 +380,9 @@
       "flagged_jsonl": "<output-dir>/flagged.jsonl",
       "service_matrix_json": "<output-dir>/service_matrix.json",
       "key_naming_contract": "keys are semantic snake_case names, not filenames with dots"
-    }
+    },
+    "top_level_key_policy": "required_keys_diagnosed and required_keys_repaired are EXACT top-level key sets, not minimums. Do not add extra top-level keys (for example a separate `status` field alongside pipeline_status) in either mode.",
+    "pipeline_status_note": "pipeline_status values are exact short literals: `diagnosed` after diagnose, `repaired` after repair. Do not substitute descriptive sentences."
   },
   "canonicalization": {
     "dedupe_by_id": "collapse duplicate event ids keeping the row with highest ts_ms; if ts_ms ties, keep higher severity rank (error>warn>info>debug); if still tied, prefer non-suppressed row; if still tied, keep lexicographically greater normalized message; if still tied, keep lexicographically greater normalized service",
@@ -281,7 +476,10 @@
       }
     },
     "pre_repair": {
-      "required_fields": ["pipeline_source_sha256", "pipeline_tokens_present"],
+      "required_fields": [
+        "pipeline_source_sha256",
+        "pipeline_tokens_present"
+      ],
       "field_names_contract": "use these names exactly; frozen_source, sha256, source_sha256, or other aliases are invalid",
       "capture_order": "before any write to export_report.py",
       "capture_source": "/app/workflow/.export_report.original",
@@ -296,7 +494,10 @@
       }
     },
     "post_repair": {
-      "required_fields": ["flagged_count", "rerun_flagged_count"],
+      "required_fields": [
+        "flagged_count",
+        "rerun_flagged_count"
+      ],
       "field_contract": "flagged_count is summary.json.flagged_count from the repaired run; rerun_flagged_count is the second idempotency run's summary.json.flagged_count"
     }
   },
@@ -333,7 +534,12 @@
   "outputs": {
     "summary_json": {
       "schema_version": "service-log-report-v2",
-      "level_counts_key_order": ["debug", "error", "info", "warn"],
+      "level_counts_key_order": [
+        "debug",
+        "error",
+        "info",
+        "warn"
+      ],
       "canonical_fingerprint": "sha1 over canonical rows in canonical_order joined by newline where each row is 'id|ts_ms|level|service|message|suppressed_int' and suppressed_int is 1 or 0",
       "silence_excluded_count": "number of canonical warn/error rows excluded by silence windows (after suppressed exclusion)",
       "silence_compaction_checksum": "sha256 over compacted silence rows in canonical order (service, level_scope, start_ms, end_ms) as lines service|level_scope|start_ms|end_ms",
@@ -351,7 +557,12 @@
       "description": "The JSON root is the service map itself, with no schema_version field, services wrapper, metadata wrapper, or other envelope. Each top-level key is a canonical service name and each value is that service's level-count object.",
       "top_level_shape": "{canonical_service: {debug: int, error: int, info: int, warn: int}}",
       "service_sort": "ascending alphabetical",
-      "level_key_order": ["debug", "error", "info", "warn"],
+      "level_key_order": [
+        "debug",
+        "error",
+        "info",
+        "warn"
+      ],
       "exact_nested_keys": true
     },
     "flagged_jsonl": {
@@ -374,7 +585,10 @@
         "event_digest"
       ],
       "sort": "ts_ms descending with tiebreaks severity rank desc, causal_burst_score desc, blast_radius_score desc, dependency_pressure_score desc, dependency_chain_depth desc, silence_pressure_score desc, id asc",
-      "levels_included": ["warn", "error"],
+      "levels_included": [
+        "warn",
+        "error"
+      ],
       "exclude_suppressed": true,
       "json_format": "compact (no space after colon)"
     }
@@ -385,11 +599,22 @@
   },
   "silence_windows": {
     "source_path": "/app/data/silence_windows.json",
-    "row_fields": ["service", "level_scope", "start_ms", "end_ms"]
+    "row_fields": [
+      "service",
+      "level_scope",
+      "start_ms",
+      "end_ms"
+    ]
   },
   "service_dependencies": {
     "source_path": "/app/data/service_dependencies.json",
-    "row_fields": ["upstream_service", "downstream_service", "lag_min_ms", "lag_max_ms", "weight"],
+    "row_fields": [
+      "upstream_service",
+      "downstream_service",
+      "lag_min_ms",
+      "lag_max_ms",
+      "weight"
+    ],
     "canonicalization": "normalize both services with canonical service aliases; int-coerce lag and weight fields; drop empty services, lag_min_ms < 0, lag_max_ms <= lag_min_ms, or weight <= 0; dedupe identical (upstream_service, downstream_service, lag_min_ms, lag_max_ms) rules by maximum weight",
     "candidate_events": "dependency sources and targets are final unsuppressed, unsilenced warn/error rows; a source is eligible only when source.ts_ms < target.ts_ms",
     "rule_match": "a canonical rule matches when source.service=upstream_service, target.service=downstream_service, and lag_min_ms <= target.ts_ms-source.ts_ms < lag_max_ms",
@@ -412,7 +637,10 @@
     "blast_radius_digest": "first 10 lowercase SHA1 hex chars of service|comma_joined_blast_radius_services|blast_radius_score",
     "event_digest_reference": "use canonicalization.event_digest; there is no baseline/extended digest variant",
     "worked_example_max_rule_and_top_three": {
-      "severity_rank": {"error": 4, "warn": 3},
+      "severity_rank": {
+        "error": 4,
+        "warn": 3
+      },
       "canonical_rules": [
         "api->worker lag [50,200) weight 4 (a duplicate weight-2 rule was discarded)",
         "db->worker lag [50,100) weight 3"
@@ -423,18 +651,30 @@
         "s3: db/error at 120, dependency_pressure_score 0"
       ],
       "target": "s4: worker/error at 200",
-      "contributions": ["s1=4*4+0+(0//2)=16", "s2=4*3+0+(0//2)=12", "s3=3*4+0+(0//2)=12"],
-      "retained_source_ids": ["s1", "s3", "s2"],
+      "contributions": [
+        "s1=4*4+0+(0//2)=16",
+        "s2=4*3+0+(0//2)=12",
+        "s3=3*4+0+(0//2)=12"
+      ],
+      "retained_source_ids": [
+        "s1",
+        "s3",
+        "s2"
+      ],
       "dependency_pressure_score": 40
     },
     "worked_example_recursive_propagation": {
-      "rules": ["api->worker weight 4", "worker->db weight 2"],
+      "rules": [
+        "api->worker weight 4",
+        "worker->db weight 2"
+      ],
       "rows": [
         "a: api/error has dependency score 0, depth 0, lineage [], burst 0",
         "b: worker/error receives 4*4+0+(0//2)=16 from a; depth 1; lineage [a]; burst=min(16+(0//2)+3,9999)=19",
         "c: db/error receives 2*4+0+(16//2)=16 from b; depth 2; lineage [b,a]; burst=min(16+(19//2)+6,9999)=31"
       ],
       "clarification": "b's finalized dependency, depth, lineage, and burst values are used when b contributes to c; rows are not computed independently from an all-zero snapshot"
-    }
+    },
+    "blast_radius_origin_exclusion": "The origin service is never its own blast-radius destination: discard one-hop self-loops and any two-hop path that returns to the origin (a->b->a). blast_radius_services never contains the flagged row's own service."
   }
 }
